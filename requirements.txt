@@ -1,0 +1,8 @@
+# Direct dependencies pinned to the versions tested with Python 3.12.
+yfinance==1.8.0
+pandas==2.3.3
+numpy==2.5.4
+statsmodels==0.14.6
+streamlit==1.67.0
+plotly==6.9.0
+pytest==9.2.0
