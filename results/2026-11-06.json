@@ -1,0 +1,84 @@
+{
+  "label": "Exploratory continuous-futures research simulation",
+  "statistics": {
+    "observations": 1256,
+    "start": "2021-11-08",
+    "end": "2026-11-05",
+    "pearson_correlation": 0.9891223763745262,
+    "spread_mean": 4.441608201166627,
+    "spread_std": 2.097707564622221,
+    "adf_statistic": -3.261097021397423,
+    "adf_pvalue": 0.016709558250334926,
+    "cointegration_statistic": -3.500466134970325,
+    "cointegration_pvalue": 0.03235408890373675
+  },
+  "assumptions": {
+    "contracts": 1,
+    "commission": 2.5,
+    "slippage_ticks": 1.0,
+    "reference_capital": 100000.0
+  },
+  "metrics": {
+    "gross_pnl": 58320.03402709958,
+    "transaction_costs": 2500.0,
+    "net_pnl": 55820.03402709958,
+    "sharpe_ratio": 1.0743643324184364,
+    "profit_factor": 6.98286816818067,
+    "win_rate": 0.7,
+    "max_drawdown_usd": 7069.999694824219,
+    "number_of_trades": 50
+  },
+  "explanation": [
+    "Price correlation is 0.989. Correlation measures co-movement, but does not establish mean reversion.",
+    "ADF p-value 0.0167: at the 5% level the test rejects the unit-root null; this is evidence of stationarity.",
+    "Engle\u2013Granger p-value 0.0324: the test rejects the no-cointegration null; this supports a long-run relationship.",
+    "Engle\u2013Granger estimates its own hedge coefficient. A significant result does not prove that the equal-quantity Brent minus WTI spread is stationary.",
+    "These full-sample tests describe this sample only. They do not guarantee future mean reversion or profitable trading, and do not filter the strategy."
+  ],
+  "provenance": {
+    "retrieved_at_utc": "2026-11-06T18:21:28.516376+00:00",
+    "implementation_commit": "666b48c",
+    "source": "Yahoo Finance via yfinance; unadjusted daily Close",
+    "tickers": {
+      "WTI": "CL=F",
+      "Brent": "BZ=F"
+    },
+    "requested_start": "2021-11-06",
+    "requested_end_exclusive": "2026-11-06",
+    "cleaned_csv_sha256": "e0d340953efc674ac31ccfeca2257321959cd5d01f04b0ed8be3825451fb7907",
+    "versions": {
+      "yfinance": "1.8.0",
+      "pandas": "2.3.3",
+      "numpy": "2.5.4",
+      "statsmodels": "0.14.6"
+    }
+  },
+  "strategy": {
+    "rolling_window": 20,
+    "entry_threshold": 2.0,
+    "exit_band": 0.25,
+    "execution": "Signal at close t executes at close t+1; first P&L at close t+2; final liquidation with costs",
+    "wti_barrels_per_contract": 1000,
+    "brent_barrels_per_contract": 1000,
+    "tick_size_usd_per_barrel": 0.01
+  },
+  "limitations": [
+    "Continuous futures proxies are not executable expiry-matched contracts; roll transitions and adjustments can distort P&L.",
+    "In-sample illustrative simulation; no out-of-sample validation, roll trades, margin or liquidity model.",
+    "A $15.93/barrel absolute spread jump on 2026-04-01 is present in the source; cause is not established and observations were not removed."
+  ],
+  "contract_verification": {
+    "CL": {
+      "source": "https://www.cmegroup.com/CmeWS/mvc/ContractSpecs/List/productId/425",
+      "contract_unit": "1,000 barrels",
+      "minimum_price_fluctuation": "0.01 per barrel = $10.00",
+      "verified_date": "2026-11-06"
+    },
+    "BZ": {
+      "source": "https://www.cmegroup.com/CmeWS/mvc/ContractSpecs/List/productId/424",
+      "contract_unit": "1,000 barrels",
+      "minimum_price_fluctuation": "0.01 per barrel = $10.00",
+      "verified_date": "2026-11-06"
+    }
+  }
+}

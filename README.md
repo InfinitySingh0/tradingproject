@@ -107,7 +107,7 @@ Official specification references:
 - [CME WTI contract specifications](https://www.cmegroup.com/markets/energy/crude-oil/light-sweet-crude.contractSpecs.html)
 - [CME Brent Last Day Financial contract specifications](https://www.cmegroup.com/markets/energy/crude-oil/brent-crude-oil-last-day.contractSpecs.html)
 
-BZ is the CME financial Brent contract reference; do not silently equate it to an expiry-matched ICE position. These specification values are encoded explicitly, but **live source verification was blocked by the build environment's network policy**. Recheck the official references before relying on results. Yahoo symbol histories do not establish actual contracts held or roll executions.
+BZ is the CME financial Brent contract reference; do not silently equate it to an expiry-matched ICE position. The multipliers and outright tick sizes were verified on November 6, 2026 against the CME specification data for [CL (product 425)](https://www.cmegroup.com/CmeWS/mvc/ContractSpecs/List/productId/425) and [BZ (product 424)](https://www.cmegroup.com/CmeWS/mvc/ContractSpecs/List/productId/424): both are 1,000 barrels with a $0.01/barrel ($10) outright tick. Yahoo symbol histories do not establish actual contracts held or roll executions.
 
 For direction `s` (+1 long spread, −1 short spread) and quantity `q` on each leg:
 
@@ -140,9 +140,47 @@ No margin calls, collateral interest, financing, liquidity, actual roll trades, 
 
 The automated tests cover spread and sample-standard-deviation Z-scores, future-data independence, signal state transitions, next-close execution, both-leg contract P&L, costs, final liquidation, loss/win metrics, missing data, downloader behavior, and dashboard rendering. Tests use explicitly synthetic deterministic fixtures solely to verify software; those fixtures are never presented as market observations.
 
-**Historical performance is not reported yet.** The build environment denied Yahoo Finance and CME connections with HTTP 403 at its outbound proxy. Consequently, a real historical dataset, actual test statistics, historical charts and profitability results could not be generated or verified here. The dashboard reports this failure instead of showing invented results.
+### Verified historical run — November 6, 2026
 
-The environment draft contains requests to allow `query1.finance.yahoo.com`, `query2.finance.yahoo.com`, `fc.yahoo.com`, `guce.yahoo.com`, `consent.yahoo.com`, and `www.cmegroup.com`. These are domain settings, not credentials. After network settings are applied, run `python data.py` followed by `python backtest.py` to generate the real results, and verify the contract specification references. No network restrictions or TLS checks are bypassed by this project.
+Continued from implementation commit `666b48c` without changing the strategy or tuning its parameters. Yahoo Finance downloads succeeded for both tickers. The request covered November 6, 2021 through November 6, 2026 (exclusive); cleaning produced **1,256 matched daily observations from November 8, 2021 through November 5, 2026**. Missing pairs were dropped without filling. Current-day data were excluded.
+
+Default assumptions: 20-observation rolling window, entry beyond ±2, exit band ±0.25 (including zero crossings), one 1,000-barrel contract on each leg, $2.50 commission and one $10 slippage tick per leg per execution. Signals execute at the next close, and P&L begins after execution. Any remaining trade closes at the final observation.
+
+| Statistical measure | Observed result |
+| --- | ---: |
+| Pearson price correlation | 0.989122 |
+| Mean Brent − WTI spread | $4.441608/barrel |
+| Sample spread standard deviation | $2.097708/barrel |
+| ADF statistic | −3.261097 |
+| ADF p-value | 0.016710 |
+| Engle–Granger statistic | −3.500466 |
+| Engle–Granger p-value | 0.032354 |
+
+At the 5% level, the ADF test rejects its unit-root null for this spread, and Engle–Granger rejects its no-cointegration null. These are sample-specific findings, not proof of persistent mean reversion. Engle–Granger estimates a different hedge coefficient; its result alone does not validate the 1:1 trade. Full-sample tests did not influence any signals.
+
+| Illustrative simulation metric | Result |
+| --- | ---: |
+| Gross P&L | $58,320.03 |
+| Estimated commissions and slippage | $2,500.00 |
+| **Net P&L** | **$55,820.03** |
+| Annualized P&L-based Sharpe | 1.0744 |
+| Profit factor, after costs | 6.9829 |
+| Win rate, after costs | 70.0% |
+| Maximum dollar drawdown | $7,070.00 |
+| Completed trades | 50 |
+
+**These are computed continuous-series simulation results, not verified executable profits.** In particular, the source spread changes by $15.93/barrel on April 1, 2026; other large daily changes include $7.14 on June 1, 2022 and $7.07 on March 31, 2026. Their causes are not established by these data. Roll transitions, different expiries and adjustments can create apparent gains that a real matched-contract portfolio could not earn. No observations were removed to improve results. The favorable metrics do not establish a tradable edge; contract-level and out-of-sample validation remain outside this beginner project.
+
+### Saved evidence and reproduction
+
+- [Full-precision results and provenance](results/2026-11-06.json): sample dates, parameters, versions, source references and SHA-256 of the cleaned CSV.
+- [Closed-trade ledger](results/2026-11-06-trades.csv).
+- [Four interactive charts](results/2026-11-06-charts.html): download and open this HTML file in a browser; it loads Plotly from its free CDN. GitHub displays the HTML source rather than rendering it.
+- `outputs/` retains the cleaned CSV, daily backtest, summary, ledger and four standalone HTML charts with embedded Plotly for offline viewing. These generated files remain ignored by Git; the dated report above is committed.
+
+Run `python data.py` then `python backtest.py` to refresh the analysis, and `streamlit run app.py` to explore it. Later downloads can change due to the moving five-year window and Yahoo revisions; the dated report is a fixed snapshot, not a promise of identical future results.
+
+**Validation:** all 12 existing tests passed. A separate run of the actual dashboard against the downloaded CSV rendered all four charts and the expected metrics without application errors. Daily net P&L and costs reconcile to the closed-trade ledger; there are no missing prices or duplicate dates in the cleaned dataset. The Streamlit server started and its health endpoint returned `ok`. No strategy logic or application modules were rebuilt.
 
 ## Three accurate résumé bullets
 
@@ -150,4 +188,4 @@ The environment draft contains requests to allow `query1.finance.yahoo.com`, `qu
 - Implemented a two-leg futures backtest with next-close signal execution, explicit contract multipliers, configurable commission and slippage, and trade-level P&L and drawdown reporting.
 - Built an interactive Streamlit and Plotly dashboard and automated tests covering signal timing, transaction costs, data cleaning and dashboard behavior, with documented continuous-futures rollover limitations.
 
-These describe implemented capabilities, not achieved trading performance. Do not claim a Sharpe ratio, return or profitable strategy until real-data runs have been completed and reviewed.
+These bullets describe implemented and tested capabilities. If quoting the historical metrics, label them explicitly as an in-sample continuous-futures simulation and disclose the rollover limitations; do not present them as live returns.
