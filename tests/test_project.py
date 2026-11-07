@@ -35,9 +35,9 @@ def test_indicators_and_signals_do_not_use_future_prices():
 
 
 def test_stateful_signals_hold_exit_and_zero_crossing():
-    z = pd.Series([np.nan, 2, 2.1, 1.4, 0.2, -2, -2.1, -1, 0.8, 2.9, -0.9])
+    z = pd.Series([np.nan, 2, 2.1, 1.4, 0.2, -2, -2.1, -1, 0.8, 3, -0.9])
     assert trading_signals(z, entry=2.0).tolist() == [0, 0, -1, -1, 0, 0, 1, 1, 0, -1, 0]
-    assert trading_signals(pd.Series([-2.9, np.nan, -1])).tolist() == [1, 1, 1]
+    assert trading_signals(pd.Series([-3, np.nan, -1])).tolist() == [1, 1, 1]
     with pytest.raises(ValueError):
         trading_signals(z, entry=1, exit_band=1)
 
@@ -157,16 +157,9 @@ def test_dashboard_renders_analysis_and_reacts_to_settings(monkeypatch, tmp_path
     assert not at.error
     assert next(w.value for w in at.number_input if w.label == "Entry Z-score") == 1.5
     assert len(at.metric) == 10
-    assert len(at.get("plotly_chart")) == 6
-    assert at.radio[0].value == "Testing"
-    at.radio[0].set_value("Training").run(timeout=30)
-    assert not at.exception and not at.error
-    next(widget for widget in at.number_input if widget.label == "Maximum holding days").set_value(3).run(timeout=30)
-    assert not at.exception and not at.error
-    summary = next(table.value for table in at.dataframe if "max_holding_days" in table.value.columns)
-    assert summary["max_holding_days"].iloc[0] <= 3
-    comparison = next(table.value for table in at.dataframe if "segment" in table.value.columns)
-    assert comparison.segment.tolist() == ["Training", "Testing"]
+    assert not at.radio
+    assert len(at.tabs) == 3
+    assert len(at.get("plotly_chart")) == 4
     at.number_input[0].set_value(30).run(timeout=30)
     assert not at.exception
     assert not at.error

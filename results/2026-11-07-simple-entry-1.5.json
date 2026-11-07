@@ -1,0 +1,45 @@
+{
+  "label": "Exploratory continuous-futures research simulation",
+  "statistics": {
+    "observations": 1256,
+    "start": "2021-11-08",
+    "end": "2026-11-05",
+    "pearson_correlation": 0.9891223763745262,
+    "spread_mean": 4.441608201166627,
+    "spread_std": 2.097707564622221,
+    "adf_statistic": -3.261097021397423,
+    "adf_pvalue": 0.016709558250334926,
+    "cointegration_statistic": -3.500466134970325,
+    "cointegration_pvalue": 0.03235408890373675
+  },
+  "assumptions": {
+    "contracts": 1,
+    "commission": 2.5,
+    "slippage_ticks": 1.0,
+    "reference_capital": 100000.0
+  },
+  "strategy": {
+    "window": 20,
+    "entry": 1.5,
+    "exit_band": 0.25
+  },
+  "data_sha256": "e0d340953efc674ac31ccfeca2257321959cd5d01f04b0ed8be3825451fb7907",
+  "metrics": {
+    "gross_pnl": 94700.02365112312,
+    "transaction_costs": 3550.0,
+    "net_pnl": 91150.02365112312,
+    "sharpe_ratio": 1.5079027866623052,
+    "profit_factor": 13.87433264165716,
+    "win_rate": 0.8309859154929577,
+    "max_drawdown_usd": 7069.999694824219,
+    "number_of_trades": 71
+  },
+  "explanation": [
+    "Price correlation is 0.989. Correlation measures co-movement, but does not establish mean reversion.",
+    "ADF p-value 0.0167: at the 5% level the test rejects the unit-root null; this is evidence of stationarity.",
+    "Engle\u2013Granger p-value 0.0324: the test rejects the no-cointegration null; this supports a long-run relationship.",
+    "Engle\u2013Granger estimates its own hedge coefficient. A significant result does not prove that the equal-quantity Brent minus WTI spread is stationary.",
+    "These full-sample tests describe this sample only. They do not guarantee future mean reversion or profitable trading, and do not filter the strategy."
+  ],
+  "note": "Simple full-sample strategy, no stop or holding limit, cached Yahoo dataset ending 2026-11-05. In-sample exploratory simulation only."
+}

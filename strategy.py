@@ -15,43 +15,32 @@ def add_indicators(prices: pd.DataFrame, window: int = 20) -> pd.DataFrame:
     frame["zscore"] = (frame["spread"] - frame["rolling_mean"]) / frame[
         "rolling_std"
     ].replace(0, np.nan)
-    frame["rolling_correlation"] = frame["WTI"].rolling(60, min_periods=60).corr(frame["Brent"])
     return frame
 
 
 def trading_signals(zscore: pd.Series, entry: float = 1.5,
-                    exit_band: float = 0.25, stop_z: float = 3.0,
-                    max_holding: int = 15) -> pd.Series:
-    """Close-time decisions, executed at the NEXT close by run_backtest.
+                    exit_band: float = 0.25) -> pd.Series:
+    """Desired position at each close: +1 long Brent/short WTI, -1 opposite.
 
-    Stop a long at z <= -stop_z, a short at z >= stop_z. Do not open
-    beyond the stop. Mean-reversion exits still include crossing zero.
-    Count matched trading intervals, not calendar days: entry decision i
-    executes i+1; time-exit decision i+N executes i+N+1 (N held intervals).
-    Missing z-scores cannot trigger a price exit, but the time limit still runs.
+    Exit near zero OR after crossing zero so an overshoot cannot miss the exit.
+    Exit takes priority; there are no same-day reversals. Missing z-scores hold
+    the current position; the initial rolling-window warm-up stays flat.
     """
-    if not all(np.isfinite(v) for v in [entry, exit_band, stop_z]):
-        raise ValueError("Thresholds must be finite.")
-    if not 0 <= exit_band < entry < stop_z:
-        raise ValueError("Require 0 <= exit band < entry threshold < stop Z-score.")
-    if max_holding < 1 or int(max_holding) != max_holding:
-        raise ValueError("Maximum holding period must be a positive integer.")
-    state, age = 0, 0
+    if not 0 <= exit_band < entry:
+        raise ValueError("Require 0 <= exit band < entry threshold.")
+    state = 0
     signals = []
     for z in zscore:
-        if state:
-            age += 1
-            mean_exit = pd.notna(z) and (
-                (state == 1 and z >= -exit_band) or (state == -1 and z <= exit_band))
-            stop_exit = pd.notna(z) and (
-                (state == 1 and z <= -stop_z) or (state == -1 and z >= stop_z))
-            if mean_exit or stop_exit or age >= max_holding:
-                state, age = 0, 0
-        elif pd.notna(z):
-            if entry < z < stop_z:
-                state = -1
-            elif -stop_z < z < -entry:
-                state = 1
+        if pd.notna(z):
+            if state == 1 and z >= -exit_band:
+                state = 0
+            elif state == -1 and z <= exit_band:
+                state = 0
+            elif state == 0:
+                if z > entry:
+                    state = -1
+                elif z < -entry:
+                    state = 1
         signals.append(state)
     return pd.Series(signals, index=zscore.index, name="signal", dtype=int)
 
