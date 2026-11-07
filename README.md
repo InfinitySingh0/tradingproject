@@ -1,206 +1,220 @@
 # WTI–Brent Crude Oil Spread Trading Using Mean Reversion
 
-A small Python research project exploring whether the daily **Brent − WTI** crude oil price spread offers mean-reversion opportunities. Includes Yahoo Finance downloads, statistical tests, a transparent two-leg futures simulation, and a Streamlit dashboard.
+A beginner-friendly Python research project that studies the **Brent − WTI** crude oil price spread, generates mean-reversion signals, and simulates two-leg futures P&L after transaction costs. Explore the results in a Streamlit dashboard built with Plotly.
 
-**Exploratory analysis, not verified trading performance.** Yahoo continuous futures symbols are price proxies, not a history of executable, expiry-matched contracts. No profitability is assumed or promised.
+**Exploratory research only.** Yahoo continuous futures are price proxies. Rollover effects can distort signals and simulated profits; these results are not verified executable or live-trading performance.
 
-## Current simplified version
+## What the project does
 
-Restored the original full-history workflow, with a configurable **default entry Z-score of ±1.5** and the original mean-reversion exit band of ±0.25 (including zero crossings). There is no Z-score stop, maximum holding limit, train/test split, threshold optimizer, slippage sweep, rolling-correlation chart, monthly P&L chart or additional completed-trade summary. A position remains open until mean reversion or final-sample liquidation.
+- Downloads approximately five years of daily WTI (`CL=F`) and Brent (`BZ=F`) prices with free `yfinance` access.
+- Aligns and cleans prices, calculates correlation, and runs ADF and Engle–Granger tests.
+- Trades a 20-observation rolling spread Z-score with **default entry ±1.5** and mean-reversion exit near zero (±0.25).
+- Uses next-close execution, explicit futures contract multipliers, commissions and slippage.
+- Displays four charts: price history, spread with executed trades, Z-score, and cumulative P&L.
+- Exports cleaned prices, daily P&L and detailed trades with both legs' entry and exit prices.
 
-The four original charts remain: prices, spread/trade markers, Z-score and cumulative P&L. The trade ledger includes WTI and Brent entry/exit prices, spreads, decision/execution dates, available decision Z-scores, directions, quantity, observed holding duration, leg-level P&L and separate fees. Holding duration is descriptive, not a limit. Displayed prices are execution-day Yahoo closes in USD/barrel; slippage is deducted separately as a cash cost, not also added to the prices. These are continuous-futures proxy prices, not verified executable fills.
+The current version uses the entire sample. It has **no train/test split, stop-loss, maximum holding period or automatic threshold selection**. A position stays open until the mean-reversion exit or final-sample liquidation. Holding duration in the ledger is descriptive, not a limit. There are no monthly P&L, rolling-correlation or slippage-comparison features in the current app.
 
-Commissions, a configurable single slippage assumption, contract multipliers, lagged execution and rollover disclosures remain. All analysis is in-sample. Dated files in `results/` from other versions are archived evidence only, not current behavior. Old training/testing or threshold output files on disk are not read by this version; `python backtest.py` writes the full-sample files listed below.
+## Run on Windows (PowerShell)
 
-Current verification: **16 tests pass**, including checks that positions can remain open beyond 15 observations and beyond |Z| = 3, while the mean-reversion exit still works. Actual-data dashboard checks confirm four charts, no removed controls, and both legs' nonmissing entry/exit prices.
+Install Git and **Python 3.12** (the tested Python version).
 
-The rerun uses the saved Yahoo dataset (2021-11-08 through 2026-11-05): net simulated P&L **$91,150.02**, Sharpe **1.5079**, and **71 completed trades**. These are in-sample proxy-data calculations, not verified trading profitability. [Full results](results/2026-11-07-simple-entry-1.5.json) and [detailed trade prices](results/2026-11-07-simple-entry-1.5-trades.csv).
+### First installation
 
-## Quick start
+Clone only if you do not already have the repository folder:
 
-Use Python 3.12 (tested). From the repository root:
+```powershell
+git clone https://github.com/InfinitySingh0/tradingproject.git
+cd tradingproject
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+Open **http://localhost:8501**. The app downloads prices automatically if its local CSV is missing. These commands use the virtual environment directly, so PowerShell script activation is unnecessary.
+
+### Update an existing installation
+
+Stop the running dashboard with **Ctrl+C**, open your existing project folder, and pull the latest code:
+
+```powershell
+cd C:\Users\MAA\tradingproject
+git pull origin main
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+Replace the folder path if you cloned elsewhere. If `.venv` does not exist, run `py -3.12 -m venv .venv` before installing dependencies. If Git reports conflicting local changes, preserve and resolve them before pulling; do not delete the folder or discard your work blindly.
+
+To refresh prices and generate CSV/HTML reports outside the dashboard:
+
+```powershell
+.\.venv\Scripts\python.exe data.py
+.\.venv\Scripts\python.exe backtest.py
+```
+
+To run the tests:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+## Run on macOS, Linux or the cloud workspace
+
+From the repository root (`/workspace/tradingproject` in the prepared cloud environment):
 
 ```bash
-python -m venv .venv
+python3.12 -m venv .venv   # First setup only; reuse an existing environment
 source .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 python data.py
 python backtest.py
 streamlit run app.py
 ```
 
-`python data.py` downloads approximately five years of daily `CL=F` and `BZ=F` prices. `python backtest.py` uses the saved prices, or downloads them if missing. The dashboard also downloads automatically when no saved CSV exists; its refresh button requests a new download.
+If the environment already has dependencies installed, activate `.venv` and run `streamlit run app.py`. Run tests with `python -m pytest -q`.
 
-Run the tests with:
+No API key, paid dataset or brokerage account is needed. Yahoo can rate-limit requests or change its endpoints. A failed download produces an error rather than invented prices. Retry later or check network access; keep TLS verification enabled. Use the dashboard's refresh button to update a cached CSV.
 
-```bash
-python -m pytest -q
+## Strategy in plain language
+
+The spread is `Brent price − WTI price`, in dollars per barrel. A Z-score describes how far today's spread is from its recent average:
+
+```text
+Z-score = (spread − trailing 20-observation mean) / trailing sample standard deviation
 ```
 
-No API key, paid data, database, or brokerage account is required. Yahoo may rate-limit or change its free endpoints. Keep TLS verification enabled. If download fails, check network access and retry later; the program never substitutes invented prices.
+Only data available through that close enter the rolling calculation. The warm-up and zero-volatility windows have no valid Z-score.
 
-## Files
+| Condition | Decision |
+| --- | --- |
+| Flat and Z > +1.5 | Short spread: sell Brent and buy WTI |
+| Flat and Z < −1.5 | Long spread: buy Brent and sell WTI |
+| Long and Z ≥ −0.25 | Close both legs |
+| Short and Z ≤ +0.25 | Close both legs |
+| Otherwise | Hold the position or remain flat |
 
-The existing repository is named `tradingproject`; it serves as the project root without an extra nested directory.
+Entry comparisons are strict. Exit rules also catch a jump across zero. There is no immediate reversal on an exit day. Missing Z-scores hold an existing position. Entry, exit band, rolling window, quantities and costs can be changed in the sidebar.
+
+**Why ±1.5?** It is the current chosen default, not a theoretically optimal threshold or a guarantee of profits. It was chosen after earlier exploration of this history. The current program does not optimize it or validate it on unseen data.
+
+### Execution timing
+
+A signal from Monday's close executes at Tuesday's close (or the next matched observation). Its first earned move is Tuesday close to Wednesday close. It does not earn the price move before its entry.
+
+In the code, `position = signal.shift(1)` describes holdings after today's close; `held_position = position.shift(1)` earns today's close-to-close move. Any remaining position closes at the final observation with exit costs.
+
+## Futures P&L and costs
+
+Assume equal integer contract quantities, initially one per leg:
+
+| Contract reference | Code | Multiplier | Outright tick size | Dollar tick value |
+| --- | --- | ---: | ---: | ---: |
+| NYMEX WTI Light Sweet Crude Oil | CL | 1,000 barrels | $0.01/barrel | $10 |
+| NYMEX Brent Last Day Financial | BZ | 1,000 barrels | $0.01/barrel | $10 |
+
+These values were checked against CME specifications on November 6, 2026: [WTI](https://www.cmegroup.com/markets/energy/crude-oil/light-sweet-crude.contractSpecs.html) and [Brent](https://www.cmegroup.com/markets/energy/crude-oil/brent-crude-oil-last-day.contractSpecs.html). BZ is the CME financial Brent reference; Yahoo histories do not establish which executable, expiry-matched contracts were held.
+
+```text
+Daily gross P&L = held direction × quantity × (1,000 × Brent change − 1,000 × WTI change)
+```
+
+Direction is +1 for a long spread and −1 for a short spread. A favorable $1/barrel spread change gives $1,000 gross per pair, not $1.
+
+Defaults are **$2.50 commission plus one $10 slippage tick per contract, per leg, per execution**. One pair costs $25 to open and $25 to close: **$50 per round trip**. Slippage is deducted as cash; it is not also applied to the displayed entry/exit prices.
+
+### A worked trade from the saved ledger
+
+The first trade in the [current saved ledger](results/2026-11-07-simple-entry-1.5-trades.csv) was a long spread. Its entry signal was December 22, 2021 (Z ≈ −1.5422), executed December 23. The exit signal was January 4, 2022 (Z ≈ 0.1190), executed January 5.
+
+| Leg | Entry action | Entry close | Exit close | Gross P&L |
+| --- | --- | ---: | ---: | ---: |
+| Brent | Buy one contract | $76.85 | $80.80 | +$3,950.00 |
+| WTI | Sell one contract | $73.79 | $77.85 | −$4,060.00 |
+
+Total gross P&L was approximately **−$109.99**. Subtract $10 commission and $40 slippage for **−$159.99 net P&L**. Values in the table are rounded; calculations use full-precision downloaded prices.
+
+This is a useful example of why a Z-score exit near zero does **not** guarantee profit: rolling mean and volatility change, execution is delayed, and costs must be paid.
+
+## Statistics and performance metrics
+
+- **Correlation:** measures co-movement of price levels; it does not establish a mean-reverting spread.
+- **ADF:** tests the fixed Brent − WTI spread against a unit-root null. A small p-value is evidence against that null within this sample.
+- **Engle–Granger:** tests for cointegration with an estimated coefficient and intercept. A significant result does not by itself validate the equal-quantity spread. Interpretation also relies on integration assumptions that this simple project does not fully establish.
+- **Sharpe:** annualized mean daily net P&L divided by its sample standard deviation, using 252 observations/year, zero interest and fixed $100,000 reference capital. Fixed scaling cancels in the ratio. This is not a compounded return or return on actual margin.
+- **Profit factor:** positive closed-trade net P&L divided by absolute negative closed-trade net P&L. Undefined denominators display as N/A.
+- **Win rate:** proportion of closed trades with positive net P&L; break-even trades are not wins.
+- **Maximum drawdown:** largest dollar decline from a prior cumulative net P&L peak, including the starting zero balance.
+
+Full-sample statistical tests describe the data; they do not filter trading signals. The trade count includes final forced liquidation, if needed.
+
+## Recorded results and limitations
+
+The saved November 7, 2026 run used **1,256 matched observations from November 8, 2021 to November 5, 2026**, downloaded on November 6. Settings: 20-observation window, entry ±1.5, exit ±0.25, one pair, and the costs above.
+
+| Measure | Recorded simulation |
+| --- | ---: |
+| Gross P&L | $94,700.02 |
+| Commissions and slippage | $3,550.00 |
+| Net P&L | $91,150.02 |
+| Sharpe | 1.5079 |
+| Profit factor | 13.8743 |
+| Win rate | 83.10% |
+| Maximum drawdown | $7,070.00 |
+| Completed trades | 71 |
+| Price correlation | 0.9891 |
+| ADF p-value | 0.0167 |
+| Engle–Granger p-value | 0.0324 |
+
+[Full-precision results and dataset hash](results/2026-11-07-simple-entry-1.5.json) · [Detailed trades](results/2026-11-07-simple-entry-1.5-trades.csv)
+
+At the 5% level, both tests reject their respective null hypotheses in this sample. This does not prove persistent mean reversion or an executable trading edge.
+
+**The favorable P&L needs particular caution.** The source includes a $15.93/barrel absolute spread jump on April 1, 2026. Its cause is not established. Continuous-series rolls, adjustments and mismatched expiries can create apparent gains that a real portfolio could not earn. `auto_adjust=False` does not remove these issues. No observations were removed to improve results.
+
+The analysis is entirely in-sample and parameters have been explored on this history. It provides no independent evidence of future performance. There is no margin, financing, liquidity or actual roll-transaction model, and no stop-loss or holding limit. The research conclusion is that the data support further investigation—not that a profitable live strategy has been demonstrated.
+
+New downloads may change the sample and results because the five-year window moves and Yahoo can revise history. Other dated files in `results/` are archived experiments, not current application behavior.
+
+## Project files and outputs
 
 ```text
 tradingproject/
-├── app.py              # Streamlit interface and Plotly charts
-├── data.py             # Download, clean, align and save prices
-├── strategy.py         # Indicators, statistical tests, stateful signals
-├── backtest.py         # Execution, dollar P&L, costs and trade ledger
+├── app.py                      # Streamlit dashboard and Plotly charts
+├── data.py                     # Yahoo downloads, cleaning and CSV cache
+├── strategy.py                 # Indicators, statistical tests and trading rules
+├── backtest.py                 # Execution, dollar P&L, costs and trade ledger
 ├── requirements.txt
 ├── README.md
 ├── tests/
 │   ├── test_project.py
 │   └── test_trade_details.py
-└── outputs/            # Generated locally after a successful download; ignored by Git
+├── results/                    # Dated research snapshots
+└── outputs/                    # Generated locally; ignored by Git
 ```
 
-Generated outputs:
+Data cleaning sorts and deduplicates dates, removes invalid/missing pairs without forward-filling, and retains negative prices. Current-day bars are excluded. Matching dates does not guarantee simultaneous settlements or matching expiries.
 
-| File | Contents |
+`python backtest.py` reads the cached prices (or downloads if missing) and writes:
+
+| Output | Contents |
 | --- | --- |
-| `prices.csv` | Date, WTI, Brent; matched daily closes |
-| `backtest.csv` | Signals, positions, daily P&L, costs and drawdowns |
-| `trades.csv` | Completed trades including entry/exit costs |
-| `results.json` | Sample dates, statistical tests, assumptions and metrics |
-| `prices.html`, `spread.html`, `zscore.html`, `pnl.html` | Standalone interactive Plotly charts |
+| `prices.csv` | Cleaned WTI and Brent closes; created by the downloader |
+| `backtest.csv` | Daily signals, positions, P&L, fees and drawdowns |
+| `trades.csv` | Both legs' entry/exit prices, spreads, decision dates/Z-scores, sides, quantity, holding duration, P&L and fees |
+| `results.json` | Statistics, assumptions, parameters, metrics and dataset hash |
+| `prices.html`, `spread.html`, `zscore.html`, `pnl.html` | Interactive charts with Plotly embedded for offline viewing |
 
-The dashboard shows all four charts, executed long/short/exit markers, metrics, statistical explanations, a trade ledger, and CSV downloads. HTML charts embed Plotly and can be opened offline after generation.
+Final liquidations have no exit decision date or decision Z-score. Missing values remain blank. The dashboard provides CSV downloads and recalculates its displays when settings change; CLI reports use the default parameters. Old training/testing or threshold files are not read by the current app.
 
-## Data and cleaning
+## Validation and résumé use
 
-- Source: free `yfinance`, Yahoo tickers **CL=F** (WTI) and **BZ=F** (Brent).
-- Uses raw daily `Close` with `auto_adjust=False`. This does **not** remove continuous-contract roll effects or make the series tradable.
-- Requests five calendar years ending before the current UTC date to exclude potentially unfinished daily bars.
-- Removes invalid/missing pairs, normalizes daily dates, sorts observations and removes duplicate dates. No forward-fill or interpolation.
-- Negative prices are retained: futures prices can be negative.
-- Rolling windows count matched observations, not calendar days. Date matching does not ensure simultaneous settlements or matching contract expiries.
-- A failed refresh preserves an existing cleaned CSV. Refresh explicitly to update a cached dataset.
+The current implementation passed **16 automated tests**, plus actual-data Streamlit and Chromium checks. Tests cover spread/Z-score arithmetic, future-data independence, mean-reversion signals, lagged execution, multipliers, costs, final liquidation, data cleaning, downloader failures, detailed trade accounting and dashboard rendering. Synthetic fixtures are used only for software tests, never as historical results. This README update does not change strategy code.
 
-## Statistics in plain language
+Accurate résumé bullets:
 
-1. **Pearson correlation:** how closely price levels move together. High correlation does not imply a stationary spread or a profitable trade.
-2. **Spread:** `Brent close − WTI close`, measured in USD per barrel. Report its sample mean and sample standard deviation.
-3. **Augmented Dickey–Fuller (ADF):** tests the fixed 1:1 spread. The null hypothesis is a unit root. A p-value below 0.05 is evidence against that null, not proof that future prices will revert.
-4. **Engle–Granger:** tests Brent and WTI price levels for cointegration, with an estimated coefficient and intercept. Its null is no cointegration. A significant result does not necessarily validate the fixed 1:1 spread. Cointegration interpretation also relies on the input series' integration properties; this simple project does not establish all those assumptions.
-5. **Rolling Z-score:** `(spread − trailing mean) / trailing sample standard deviation`, initially over 20 observations. Only information available through that day's close is used. The initial window and zero-volatility windows have no valid Z-score.
+- Developed a Python research application for WTI–Brent futures spreads with Yahoo Finance ingestion, rolling Z-scores, ADF testing and Engle–Granger cointegration analysis.
+- Implemented a two-leg futures simulation with lagged execution, explicit contract multipliers, commissions, slippage and detailed trade-level accounting.
+- Built an interactive Streamlit/Plotly dashboard and automated tests, documenting continuous-futures rollover effects and in-sample validation limitations.
 
-Full-sample statistics are descriptive only and never filter trades. The dashboard explains the actual p-values conditionally; it does not presume stationarity or cointegration.
-
-## Trading rules and execution timing
-
-| State / condition | Desired action |
-| --- | --- |
-| Flat and Z-score > +1.5 | Short spread: sell Brent, buy WTI |
-| Flat and Z-score < −1.5 | Long spread: buy Brent, sell WTI |
-| Long and Z-score ≥ −0.25 | Close; also catches a jump across zero |
-| Short and Z-score ≤ +0.25 | Close; also catches a jump across zero |
-| Otherwise | Hold the existing position or remain flat |
-
-Thresholds are strict for entry. Exit takes priority; no immediate reversal on an exit day. Missing indicators hold an existing position; the warm-up starts flat.
-
-**Timing matters:** a signal calculated at Monday's close executes at Tuesday's close (or the next matched observation). The first earned price change is Tuesday close to Wednesday close. Tuesday's close-to-close move is not credited to a position that only opens Tuesday evening.
-
-In code, `signal` is the desired state, `position = signal.shift(1)` is the state after today's close, and `held_position = position.shift(1)` earns today's move. This is deliberately more conservative than treating a just-computed closing-price signal as executable at that same close. Slippage approximates imperfect fills; it does not establish that the closing prices were available in practice.
-
-## Contract sizing and dollar P&L
-
-Use equal integer quantities, initially **one contract per leg**. The standard contract specifications used are:
-
-| Instrument | CME code | Contract size | Minimum price tick | Tick value |
-| --- | --- | --- | --- | --- |
-| NYMEX WTI Light Sweet Crude Oil | CL | 1,000 barrels | $0.01/barrel | $10 |
-| NYMEX Brent Crude Oil Last Day Financial | BZ | 1,000 barrels | $0.01/barrel | $10 |
-
-Official specification references:
-
-- [CME WTI contract specifications](https://www.cmegroup.com/markets/energy/crude-oil/light-sweet-crude.contractSpecs.html)
-- [CME Brent Last Day Financial contract specifications](https://www.cmegroup.com/markets/energy/crude-oil/brent-crude-oil-last-day.contractSpecs.html)
-
-BZ is the CME financial Brent contract reference; do not silently equate it to an expiry-matched ICE position. The multipliers and outright tick sizes were verified on November 6, 2026 against the CME specification data for [CL (product 425)](https://www.cmegroup.com/CmeWS/mvc/ContractSpecs/List/productId/425) and [BZ (product 424)](https://www.cmegroup.com/CmeWS/mvc/ContractSpecs/List/productId/424): both are 1,000 barrels with a $0.01/barrel ($10) outright tick. Yahoo symbol histories do not establish actual contracts held or roll executions.
-
-For direction `s` (+1 long spread, −1 short spread) and quantity `q` on each leg:
-
-```text
-Daily gross P&L = held s × q × (1,000 × change in Brent − 1,000 × change in WTI)
-```
-
-A $1/barrel favorable change in the spread yields $1,000 gross per contract pair, not $1.
-
-Default configurable costs per contract, per leg, per execution:
-
-- Commission: **$2.50**.
-- Slippage: **one tick = $10**.
-- Opening one pair costs $25; closing it costs another $25. A round trip costs $50.
-
-Costs apply to every executed position change and scale with quantity. Any open position is liquidated at the final observed close and charged exit costs; no new position opens on the last row. This bookkeeping convention is identified in the trade ledger. It can affect terminal results.
-
-## Metric definitions
-
-- **Gross / net P&L:** cumulative dollar changes before / after commissions and slippage.
-- **Sharpe:** `sqrt(252) × mean(daily net P&L / reference capital) / sample std(...)`. Reference capital is a fixed $100,000, interest is zero, and flat days are included. This is a P&L-based risk summary, not a return on actual futures margin or a compounded equity return. Fixed scaling cancels in the ratio.
-- **Profit factor:** sum of positive closed-trade net P&L divided by absolute sum of negative closed-trade net P&L. N/A when there are no losing trades, rather than a fabricated finite value.
-- **Win rate:** fraction of completed trades with strictly positive net P&L; break-even trades are not wins. N/A when no trades closed.
-- **Maximum drawdown:** largest dollar fall from a previous cumulative net P&L peak, including the starting zero balance.
-- **Number of trades:** completed round trips, including final forced liquidation.
-
-No margin calls, collateral interest, financing, liquidity, actual roll trades, or risk-based position sizing are modeled. The simulated equal quantity is an assumption, not an optimized hedge ratio. Default thresholds are a simple in-sample illustration; there is no out-of-sample validation. Repeated dashboard tuning creates overfitting risk.
-
-## Verification status and results
-
-The automated tests cover spread and sample-standard-deviation Z-scores, future-data independence, signal state transitions, next-close execution, both-leg contract P&L, costs, final liquidation, loss/win metrics, missing data, downloader behavior, and dashboard rendering. Tests use explicitly synthetic deterministic fixtures solely to verify software; those fixtures are never presented as market observations.
-
-### Archived original run — November 6, 2026
-
-This snapshot used entry ±2. It is retained as historical evidence, not the current ±1.5 simulation.
-
-Continued from implementation commit `666b48c` without changing the strategy or tuning its parameters. Yahoo Finance downloads succeeded for both tickers. The request covered November 6, 2021 through November 6, 2026 (exclusive); cleaning produced **1,256 matched daily observations from November 8, 2021 through November 5, 2026**. Missing pairs were dropped without filling. Current-day data were excluded.
-
-Default assumptions: 20-observation rolling window, entry beyond ±2, exit band ±0.25 (including zero crossings), one 1,000-barrel contract on each leg, $2.50 commission and one $10 slippage tick per leg per execution. Signals execute at the next close, and P&L begins after execution. Any remaining trade closes at the final observation.
-
-| Statistical measure | Observed result |
-| --- | ---: |
-| Pearson price correlation | 0.989122 |
-| Mean Brent − WTI spread | $4.441608/barrel |
-| Sample spread standard deviation | $2.097708/barrel |
-| ADF statistic | −3.261097 |
-| ADF p-value | 0.016710 |
-| Engle–Granger statistic | −3.500466 |
-| Engle–Granger p-value | 0.032354 |
-
-At the 5% level, the ADF test rejects its unit-root null for this spread, and Engle–Granger rejects its no-cointegration null. These are sample-specific findings, not proof of persistent mean reversion. Engle–Granger estimates a different hedge coefficient; its result alone does not validate the 1:1 trade. Full-sample tests did not influence any signals.
-
-| Illustrative simulation metric | Result |
-| --- | ---: |
-| Gross P&L | $58,320.03 |
-| Estimated commissions and slippage | $2,500.00 |
-| **Net P&L** | **$55,820.03** |
-| Annualized P&L-based Sharpe | 1.0744 |
-| Profit factor, after costs | 6.9829 |
-| Win rate, after costs | 70.0% |
-| Maximum dollar drawdown | $7,070.00 |
-| Completed trades | 50 |
-
-**These are computed continuous-series simulation results, not verified executable profits.** In particular, the source spread changes by $15.93/barrel on April 1, 2026; other large daily changes include $7.14 on June 1, 2022 and $7.07 on March 31, 2026. Their causes are not established by these data. Roll transitions, different expiries and adjustments can create apparent gains that a real matched-contract portfolio could not earn. No observations were removed to improve results. The favorable metrics do not establish a tradable edge; contract-level and out-of-sample validation remain outside this beginner project.
-
-### Saved evidence and reproduction
-
-- [Full-precision results and provenance](results/2026-11-06.json): sample dates, parameters, versions, source references and SHA-256 of the cleaned CSV.
-- [Closed-trade ledger](results/2026-11-06-trades.csv).
-- [Four interactive charts](results/2026-11-06-charts.html): download and open this HTML file in a browser; it loads Plotly from its free CDN. GitHub displays the HTML source rather than rendering it.
-- `outputs/` retains the cleaned CSV, daily backtest, summary, ledger and four standalone HTML charts with embedded Plotly for offline viewing. These generated files remain ignored by Git; the dated report above is committed.
-
-Run `python data.py` then `python backtest.py` to refresh the analysis, and `streamlit run app.py` to explore it. Later downloads can change due to the moving five-year window and Yahoo revisions; the dated report is a fixed snapshot, not a promise of identical future results.
-
-**Archived validation:** all 12 tests then present passed. A separate run of the actual dashboard against the downloaded CSV rendered all four charts and the expected metrics without application errors. Daily net P&L and costs reconcile to the closed-trade ledger; there are no missing prices or duplicate dates in the cleaned dataset. The Streamlit server started and its health endpoint returned `ok`. That validation describes the archived run only.
-
-## Three accurate résumé bullets
-
-- Developed a Python research application for WTI–Brent futures spread analysis, implementing Yahoo Finance data ingestion, rolling Z-scores, ADF stationarity testing and Engle–Granger cointegration testing.
-- Implemented a two-leg futures backtest with next-close signal execution, explicit contract multipliers, configurable commission and slippage, and trade-level P&L and drawdown reporting.
-- Built an interactive Streamlit and Plotly dashboard and automated tests covering signal timing, transaction costs, data cleaning and dashboard behavior, with documented continuous-futures rollover limitations.
-
-These bullets describe implemented and tested capabilities. If quoting the historical metrics, label them explicitly as an in-sample continuous-futures simulation and disclose the rollover limitations; do not present them as live returns.
+Describe the project as exploratory research. If quoting any metric, state its sample, assumptions and limitations; do not present it as live performance.
