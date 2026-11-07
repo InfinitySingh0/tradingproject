@@ -1,0 +1,186 @@
+{
+  "label": "Exploratory chronological 70/30 simulation; not live performance",
+  "statistics": {
+    "observations": 1256,
+    "start": "2021-11-08",
+    "end": "2026-11-05",
+    "pearson_correlation": 0.9891223763745262,
+    "spread_mean": 4.441608201166627,
+    "spread_std": 2.097707564622221,
+    "adf_statistic": -3.261097021397423,
+    "adf_pvalue": 0.016709558250334926,
+    "cointegration_statistic": -3.500466134970325,
+    "cointegration_pvalue": 0.03235408890373675
+  },
+  "assumptions": {
+    "contracts": 1,
+    "commission": 2.5,
+    "slippage_ticks": 1.0,
+    "reference_capital": 100000.0
+  },
+  "data_sha256": "e0d340953efc674ac31ccfeca2257321959cd5d01f04b0ed8be3825451fb7907",
+  "validation": "Fixed-parameter retrospective 70/30 holdout; full history was inspected previously",
+  "strategy": {
+    "window": 20,
+    "entry": 2.0,
+    "exit_band": 0.25,
+    "stop_z": 3.0,
+    "max_holding": 15
+  },
+  "explanation": [
+    "Price correlation is 0.989. Correlation measures co-movement, but does not establish mean reversion.",
+    "ADF p-value 0.0167: at the 5% level the test rejects the unit-root null; this is evidence of stationarity.",
+    "Engle\u2013Granger p-value 0.0324: the test rejects the no-cointegration null; this supports a long-run relationship.",
+    "Engle\u2013Granger estimates its own hedge coefficient. A significant result does not prove that the equal-quantity Brent minus WTI spread is stationary.",
+    "These full-sample tests describe this sample only. They do not guarantee future mean reversion or profitable trading, and do not filter the strategy."
+  ],
+  "segments": {
+    "Training": {
+      "start": "2021-11-08",
+      "end": "2025-05-08",
+      "observations": 879,
+      "metrics": {
+        "gross_pnl": 11050.018310546846,
+        "transaction_costs": 1800.0,
+        "net_pnl": 9250.018310546846,
+        "sharpe_ratio": 0.5794572994313886,
+        "profit_factor": 2.225169473815673,
+        "win_rate": 0.6111111111111112,
+        "max_drawdown_usd": 6009.98840332037,
+        "number_of_trades": 36
+      },
+      "summary": {
+        "completed_trades": 36,
+        "winning_trades": 22,
+        "losing_trades": 14,
+        "break_even_trades": 0,
+        "average_net_pnl": 256.94495307074567,
+        "best_net_pnl": 2359.9960327148438,
+        "worst_net_pnl": -2289.9902343750427,
+        "average_holding_days": 5.694444444444445,
+        "max_holding_days": 15
+      },
+      "sensitivity": [
+        {
+          "slippage_ticks": 1,
+          "gross_pnl": 11050.018310546846,
+          "transaction_costs": 1800.0,
+          "net_pnl": 9250.018310546846,
+          "sharpe_ratio": 0.5794572994313886,
+          "profit_factor": 2.225169473815673,
+          "win_rate": 0.6111111111111112,
+          "max_drawdown_usd": 6009.98840332037,
+          "number_of_trades": 36
+        },
+        {
+          "slippage_ticks": 2,
+          "gross_pnl": 11050.018310546846,
+          "transaction_costs": 3240.0,
+          "net_pnl": 7810.018310546846,
+          "sharpe_ratio": 0.4884476795776118,
+          "profit_factor": 1.9582858905978668,
+          "win_rate": 0.5833333333333334,
+          "max_drawdown_usd": 6089.98840332037,
+          "number_of_trades": 36
+        },
+        {
+          "slippage_ticks": 3,
+          "gross_pnl": 11050.018310546846,
+          "transaction_costs": 4680.0,
+          "net_pnl": 6370.018310546846,
+          "sharpe_ratio": 0.39759405920924484,
+          "profit_factor": 1.7280031082632576,
+          "win_rate": 0.5833333333333334,
+          "max_drawdown_usd": 6169.98840332037,
+          "number_of_trades": 36
+        },
+        {
+          "slippage_ticks": 5,
+          "gross_pnl": 11050.018310546846,
+          "transaction_costs": 7560.0,
+          "net_pnl": 3490.018310546846,
+          "sharpe_ratio": 0.21674005166001892,
+          "profit_factor": 1.3500525013308944,
+          "win_rate": 0.5555555555555556,
+          "max_drawdown_usd": 6409.971618652358,
+          "number_of_trades": 36
+        }
+      ]
+    },
+    "Testing": {
+      "start": "2025-05-09",
+      "end": "2026-11-05",
+      "observations": 377,
+      "metrics": {
+        "gross_pnl": 44820.014953613274,
+        "transaction_costs": 650.0,
+        "net_pnl": 44170.014953613274,
+        "sharpe_ratio": 1.6919054728057206,
+        "profit_factor": 21.93368059774039,
+        "win_rate": 0.9230769230769231,
+        "max_drawdown_usd": 7069.999694824219,
+        "number_of_trades": 13
+      },
+      "summary": {
+        "completed_trades": 13,
+        "winning_trades": 12,
+        "losing_trades": 1,
+        "break_even_trades": 0,
+        "average_net_pnl": 3397.693457970252,
+        "best_net_pnl": 16330.004882812485,
+        "worst_net_pnl": -2109.9975585937354,
+        "average_holding_days": 8.692307692307692,
+        "max_holding_days": 15
+      },
+      "sensitivity": [
+        {
+          "slippage_ticks": 1,
+          "gross_pnl": 44820.014953613274,
+          "transaction_costs": 650.0,
+          "net_pnl": 44170.014953613274,
+          "sharpe_ratio": 1.6919054728057206,
+          "profit_factor": 21.93368059774039,
+          "win_rate": 0.9230769230769231,
+          "max_drawdown_usd": 7069.999694824219,
+          "number_of_trades": 13
+        },
+        {
+          "slippage_ticks": 2,
+          "gross_pnl": 44820.014953613274,
+          "transaction_costs": 1170.0,
+          "net_pnl": 43650.014953613274,
+          "sharpe_ratio": 1.6727090257974357,
+          "profit_factor": 21.022942639272276,
+          "win_rate": 0.8461538461538461,
+          "max_drawdown_usd": 7069.999694824219,
+          "number_of_trades": 13
+        },
+        {
+          "slippage_ticks": 3,
+          "gross_pnl": 44820.014953613274,
+          "transaction_costs": 1690.0,
+          "net_pnl": 43130.014953613274,
+          "sharpe_ratio": 1.653461008613864,
+          "profit_factor": 20.08407741310334,
+          "win_rate": 0.8461538461538461,
+          "max_drawdown_usd": 7069.999694824219,
+          "number_of_trades": 13
+        },
+        {
+          "slippage_ticks": 5,
+          "gross_pnl": 44820.014953613274,
+          "transaction_costs": 2730.0,
+          "net_pnl": 42090.014953613274,
+          "sharpe_ratio": 1.6148147405514943,
+          "profit_factor": 18.392568162650218,
+          "win_rate": 0.8461538461538461,
+          "max_drawdown_usd": 7069.999694824219,
+          "number_of_trades": 13
+        }
+      ]
+    }
+  },
+  "run_date": "2026-11-07",
+  "data_note": "Reuses the Yahoo dataset downloaded November 6, 2026; no refresh or synthetic data.",
+  "source_snapshot": "2026-11-06.json"
+}

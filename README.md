@@ -41,21 +41,24 @@ tradingproject/
 ├── requirements.txt
 ├── README.md
 ├── tests/
-│   └── test_project.py
+│   ├── test_project.py
+│   └── test_improvements.py
 └── outputs/            # Generated locally after a successful download; ignored by Git
 ```
 
-Generated outputs:
+Generated outputs in `outputs/`:
 
 | File | Contents |
 | --- | --- |
 | `prices.csv` | Date, WTI, Brent; matched daily closes |
-| `backtest.csv` | Signals, positions, daily P&L, costs and drawdowns |
-| `trades.csv` | Completed trades including entry/exit costs |
-| `results.json` | Sample dates, statistical tests, assumptions and metrics |
-| `prices.html`, `spread.html`, `zscore.html`, `pnl.html` | Standalone interactive Plotly charts |
+| `training_backtest.csv`, `testing_backtest.csv` | Separate daily positions, P&L, costs and drawdowns |
+| `training_trades.csv`, `testing_trades.csv` | Completed trades, costs and holding days |
+| `training_monthly.csv`, `testing_monthly.csv` | Monthly mark-to-market P&L |
+| `training_sensitivity.csv`, `testing_sensitivity.csv` | Results at 1, 2, 3 and 5 slippage ticks |
+| `results.json` | Parameters, statistics, data fingerprint and separate segment metrics |
+| `training_*.html`, `testing_*.html` | Six charts per segment: prices, spread, Z-score, P&L, correlation and monthly P&L |
 
-The dashboard shows all four charts, executed long/short/exit markers, metrics, statistical explanations, a trade ledger, and CSV downloads. HTML charts embed Plotly and can be opened offline after generation.
+The dashboard defaults to the test segment, with a selector for training. It shows both segments' performance and cost sensitivity separately, executed trade markers, a completed-trade summary and CSV downloads. Generated HTML charts embed Plotly for offline viewing. Old unprefixed artifacts from the earlier version may still exist locally; current runs write the prefixed training/testing artifacts above.
 
 ## Data and cleaning
 
@@ -81,17 +84,33 @@ Full-sample statistics are descriptive only and never filter trades. The dashboa
 
 | State / condition | Desired action |
 | --- | --- |
-| Flat and Z-score > +2 | Short spread: sell Brent, buy WTI |
-| Flat and Z-score < −2 | Long spread: buy Brent, sell WTI |
+| Flat and +2 < Z-score < +3 | Short spread: sell Brent, buy WTI |
+| Flat and −3 < Z-score < −2 | Long spread: buy Brent, sell WTI |
 | Long and Z-score ≥ −0.25 | Close; also catches a jump across zero |
 | Short and Z-score ≤ +0.25 | Close; also catches a jump across zero |
+| Long and Z-score ≤ −3, or short and Z-score ≥ +3 | Stop-loss exit at the next close |
+| Position reaches the 15-trading-day holding limit | Time exit |
 | Otherwise | Hold the existing position or remain flat |
 
-Thresholds are strict for entry. Exit takes priority; no immediate reversal on an exit day. Missing indicators hold an existing position; the warm-up starts flat.
+Thresholds are strict for entry. New entries are blocked at or beyond the stop threshold. Exit takes priority; no immediate reversal on an exit day. Missing indicators hold an existing position unless its holding limit is reached; the warm-up starts flat. Stop threshold (default ±3) and holding limit (default 15) are configurable in the sidebar. Require `exit_band < entry < stop_z` and a positive integer holding limit.
 
 **Timing matters:** a signal calculated at Monday's close executes at Tuesday's close (or the next matched observation). The first earned price change is Tuesday close to Wednesday close. Tuesday's close-to-close move is not credited to a position that only opens Tuesday evening.
 
 In code, `signal` is the desired state, `position = signal.shift(1)` is the state after today's close, and `held_position = position.shift(1)` earns today's move. This is deliberately more conservative than treating a just-computed closing-price signal as executable at that same close. Slippage approximates imperfect fills; it does not establish that the closing prices were available in practice.
+
+A stop uses a closing Z-score and executes at the **next** close, like every other signal. It is not an intraday stop order, a guaranteed fill, or a dollar-loss cap; Z-scores themselves change with rolling volatility. If an entry is signaled at observation `i`, it executes at `i+1`; a time exit is signaled at `i+15` and executes at `i+16`, giving 15 held close-to-close intervals. Days mean matched trading observations, not calendar days. Gaps caused by missing data can increase elapsed calendar time. After an exit, a fresh eligible signal may enter again on a later observation.
+
+## Chronological validation and performance analysis
+
+- Split once at `floor(0.70 × number_of_observations)`: the first 70% is training and the remainder testing. No shuffle, fitting, parameter optimization, or test-driven selection is performed.
+- Use the same rolling window, entry/exit thresholds, stop threshold, holding limit, quantities and cost assumptions in both segments. Trailing test indicators may use earlier training prices and subsequently observed test prices; they never use future prices.
+- Training ends with a charged liquidation; testing starts flat, with no carried position or pending signal. The first test signal executes on the second test close. Each segment starts its P&L and drawdown accounting at zero, and final liquidation costs are included.
+- Both segments have independent metrics and trade ledgers. Changing sidebar settings applies the same settings to both; repeatedly choosing settings after viewing test performance would invalidate a clean holdout claim.
+- **This is retrospective holdout validation:** the earlier project already inspected the full history. The chronological partition prevents computational leakage but cannot make previously viewed data genuinely unseen. There is no claim of a pristine out-of-sample experiment or live profitability.
+- Cost sensitivity recomputes each segment at 1, 2, 3 and 5 slippage ticks per leg per execution, keeping signals and commission fixed. At one pair and $2.50 commission, total round-trip costs are $50, $90, $130 and $210 respectively.
+- The 60-observation rolling Pearson correlation is between **price levels**, not returns. It is descriptive, uses only trailing data, and is not a signal filter. Initial unavailable values remain missing.
+- Monthly bars sum daily net mark-to-market P&L and costs in their calendar month, including partial months at segment boundaries. This differs from allocating an entire trade to its exit month. Monthly totals reconcile to segment net P&L.
+- Completed-trade summaries show wins/losses/break-even trades, average/best/worst net P&L, and average/maximum held trading intervals. Empty ledgers display undefined averages as N/A rather than invented values.
 
 ## Contract sizing and dollar P&L
 
@@ -134,13 +153,49 @@ Costs apply to every executed position change and scale with quantity. Any open 
 - **Maximum drawdown:** largest dollar fall from a previous cumulative net P&L peak, including the starting zero balance.
 - **Number of trades:** completed round trips, including final forced liquidation.
 
-No margin calls, collateral interest, financing, liquidity, actual roll trades, or risk-based position sizing are modeled. The simulated equal quantity is an assumption, not an optimized hedge ratio. Default thresholds are a simple in-sample illustration; there is no out-of-sample validation. Repeated dashboard tuning creates overfitting risk.
+No margin calls, collateral interest, financing, liquidity, actual roll trades, or risk-based position sizing are modeled. The simulated equal quantity is an assumption, not an optimized hedge ratio. A fixed-parameter chronological holdout is reported separately from training; the previously inspected history limits its evidential strength. Repeated dashboard tuning creates overfitting risk.
 
 ## Verification status and results
 
 The automated tests cover spread and sample-standard-deviation Z-scores, future-data independence, signal state transitions, next-close execution, both-leg contract P&L, costs, final liquidation, loss/win metrics, missing data, downloader behavior, and dashboard rendering. Tests use explicitly synthetic deterministic fixtures solely to verify software; those fixtures are never presented as market observations.
 
-### Verified historical run — November 6, 2026
+### Current risk-managed validation — November 7, 2026
+
+This run reuses the **same 1,256-row Yahoo dataset downloaded November 6, 2026**, ending November 5, 2026; it does not claim to include newer observations. Its SHA-256 matches the archived source snapshot. No synthetic prices, parameter search or test-based tuning were used. Defaults: 20-day Z-score, entry ±2, mean-reversion exit ±0.25, stop ±3, maximum 15 held trading intervals, one contract per leg, $2.50 commission and one tick slippage per leg per execution.
+
+| Measure | Training (70%) | Testing (30%) |
+| --- | ---: | ---: |
+| Dates | 2021-11-08 – 2025-05-08 | 2025-05-09 – 2026-11-05 |
+| Observations | 879 | 377 |
+| Gross P&L | $11,050.02 | $44,820.01 |
+| Estimated costs | $1,800.00 | $650.00 |
+| Net P&L | $9,250.02 | $44,170.01 |
+| Annualized P&L-based Sharpe | 0.5795 | 1.6919 |
+| Profit factor | 2.2252 | 21.9337 |
+| Win rate | 61.11% | 92.31% |
+| Maximum drawdown | $6,009.99 | $7,070.00 |
+| Completed trades | 36 | 13 |
+| Winning / losing trades | 22 / 14 | 12 / 1 |
+| Average net P&L per trade | $256.94 | $3,397.69 |
+| Average holding intervals | 5.69 | 8.69 |
+| Maximum holding intervals | 15 | 15 |
+
+The test profit factor is based on **only one losing trade among 13 trades**. The test segment also contains the previously documented large continuous-series jumps. These favorable historical numbers do not establish a reliable or executable trading edge. Dollar P&L is not a return on actual margin; no capital or liquidity adequacy claim is made.
+
+| Slippage ticks per leg per execution | Training net P&L | Testing net P&L |
+| --- | ---: | ---: |
+| 1 | $9,250.02 | $44,170.01 |
+| 2 | $7,810.02 | $43,650.01 |
+| 3 | $6,370.02 | $43,130.01 |
+| 5 | $3,490.02 | $42,090.01 |
+
+Evidence: [full-precision validation and sensitivity](results/2026-11-07-validation.json), [training trades](results/2026-11-07-training-trades.csv), [test trades](results/2026-11-07-testing-trades.csv), and [six charts per segment](results/2026-11-07-charts.html). Download the HTML to view it in a browser; it loads Plotly from a free CDN. Locally generated `outputs/training_*.html` and `outputs/testing_*.html` embed Plotly for offline use.
+
+**Validation:** all 23 tests pass, retaining coverage of the original behavior and adding stop boundaries, executed holding periods, split isolation, correlation, cost sensitivity, monthly reconciliation and trade-summary tests. The original signal fixture now stays inside the new entry stop boundary, and the dashboard expectation increases from four to six charts. Actual-data dashboard checks verified both segment selections and their displayed metrics. Daily, monthly and trade-ledger net P&L reconcile. A dependency-level pandas/NumPy deprecation warning is emitted during month-end resampling; the aggregation and reconciliation checks pass.
+
+### Archived baseline — November 6, 2026
+
+The following baseline predates stop-loss, holding limits and the chronological split. It is retained for provenance and does **not** describe the current strategy.
 
 Continued from implementation commit `666b48c` without changing the strategy or tuning its parameters. Yahoo Finance downloads succeeded for both tickers. The request covered November 6, 2021 through November 6, 2026 (exclusive); cleaning produced **1,256 matched daily observations from November 8, 2021 through November 5, 2026**. Missing pairs were dropped without filling. Current-day data were excluded.
 
@@ -180,7 +235,7 @@ At the 5% level, the ADF test rejects its unit-root null for this spread, and En
 
 Run `python data.py` then `python backtest.py` to refresh the analysis, and `streamlit run app.py` to explore it. Later downloads can change due to the moving five-year window and Yahoo revisions; the dated report is a fixed snapshot, not a promise of identical future results.
 
-**Validation:** all 12 existing tests passed. A separate run of the actual dashboard against the downloaded CSV rendered all four charts and the expected metrics without application errors. Daily net P&L and costs reconcile to the closed-trade ledger; there are no missing prices or duplicate dates in the cleaned dataset. The Streamlit server started and its health endpoint returned `ok`. No strategy logic or application modules were rebuilt.
+**Baseline validation:** all 12 tests then present passed. A separate run of the actual dashboard against the downloaded CSV rendered all four charts and the expected metrics without application errors. Daily net P&L and costs reconcile to the closed-trade ledger; there are no missing prices or duplicate dates in the cleaned dataset. The Streamlit server started and its health endpoint returned `ok`. This statement describes the archived baseline run only.
 
 ## Three accurate résumé bullets
 

@@ -1,7 +1,8 @@
 """Illustrative daily-close futures P&L, with explicit execution timing and costs."""
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 from pathlib import Path
 import json
+import hashlib
 
 import numpy as np
 import pandas as pd
@@ -70,7 +71,7 @@ def run_backtest(prices: pd.DataFrame, signals: pd.Series,
     side_cost = config.contracts * (
         2 * config.commission + config.slippage_ticks * TICK_SIZE
         * (WTI_MULTIPLIER + BRENT_MULTIPLIER))
-    for date, row in frame.iterrows():
+    for row_number, (date, row) in enumerate(frame.iterrows()):
         old, new = int(row["held_position"]), int(row["position"])
         if active is not None:
             active["gross_pnl"] += row["gross_pnl"]
@@ -79,14 +80,16 @@ def run_backtest(prices: pd.DataFrame, signals: pd.Series,
                 active["exit_date"] = date
                 active["costs"] += side_cost
                 active["net_pnl"] = active["gross_pnl"] - active["costs"]
-                active["forced_exit"] = date == frame.index[-1]
+                active["forced_exit"] = date == frame.index[-1] and signals.iloc[-2] != 0
+                active["holding_days"] = row_number - entry_row
                 trades.append(active)
                 active = None
             if new:
+                entry_row = row_number
                 active = dict(entry_date=date, direction="Long spread" if new == 1 else "Short spread",
                               gross_pnl=0.0, costs=side_cost)
     ledger = pd.DataFrame(trades, columns=["entry_date", "exit_date", "direction",
-                                          "gross_pnl", "costs", "net_pnl", "forced_exit"])
+                                          "gross_pnl", "costs", "net_pnl", "forced_exit", "holding_days"])
     daily_scaled_pnl = frame["net_pnl"] / config.reference_capital
     volatility = daily_scaled_pnl.std(ddof=1)
     wins = ledger.loc[ledger["net_pnl"] > 0, "net_pnl"].sum()
@@ -105,23 +108,90 @@ def run_backtest(prices: pd.DataFrame, signals: pd.Series,
     return frame, ledger, metrics
 
 
+def monthly_pnl(daily: pd.DataFrame) -> pd.DataFrame:
+    """Mark-to-market P&L in its calendar month, including that month's costs."""
+    return daily[["gross_pnl", "costs", "net_pnl"]].resample("ME").sum()
+
+
+def completed_trade_summary(trades: pd.DataFrame) -> dict:
+    pnl = trades["net_pnl"]
+    return {
+        "completed_trades": len(trades),
+        "winning_trades": int((pnl > 0).sum()),
+        "losing_trades": int((pnl < 0).sum()),
+        "break_even_trades": int((pnl == 0).sum()),
+        "average_net_pnl": float(pnl.mean()) if len(trades) else None,
+        "best_net_pnl": float(pnl.max()) if len(trades) else None,
+        "worst_net_pnl": float(pnl.min()) if len(trades) else None,
+        "average_holding_days": float(trades["holding_days"].mean()) if len(trades) else None,
+        "max_holding_days": int(trades["holding_days"].max()) if len(trades) else None,
+    }
+
+
+def slippage_sensitivity(prices, signals, config=BacktestConfig()) -> pd.DataFrame:
+    """Keep the same signals, quantities and commissions in every scenario."""
+    rows = []
+    for ticks in (1, 2, 3, 5):
+        _, _, metrics = run_backtest(prices, signals, replace(config, slippage_ticks=ticks))
+        rows.append({"slippage_ticks": ticks, **metrics})
+    return pd.DataFrame(rows)
+
+
+def evaluate_split(prices, config=BacktestConfig(), *, window=20, entry=2.0,
+                   exit_band=0.25, stop_z=3.0, max_holding=15) -> dict:
+    """Chronological 70/30 holdout; no parameter fitting or test-driven selection.
+
+    Trailing indicators may use earlier training prices for test warm-up.
+    Each segment starts flat and liquidates independently at its final close.
+    No training position or pending signal crosses into the test segment.
+    """
+    from strategy import add_indicators, trading_signals
+    if not prices.index.is_monotonic_increasing or prices.index.has_duplicates:
+        raise ValueError("Use unique, chronologically ordered observations.")
+    split = int(len(prices) * 0.7)
+    if split < window or len(prices) - split < 2:
+        raise ValueError("Not enough observations for training warm-up and testing.")
+    indicators = add_indicators(prices, window)
+    segments = {}
+    for name, selection in [("Training", slice(0, split)), ("Testing", slice(split, None))]:
+        segment = indicators.iloc[selection].copy()
+        signals = trading_signals(segment["zscore"], entry, exit_band, stop_z, max_holding)
+        daily, trades, metrics = run_backtest(segment, signals, config)
+        segments[name] = dict(indicators=segment, daily=daily, trades=trades, metrics=metrics,
+                              monthly=monthly_pnl(daily), summary=completed_trade_summary(trades),
+                              sensitivity=slippage_sensitivity(segment, signals, config))
+    return segments
+
+
 if __name__ == "__main__":
     from data import DATA_PATH, download_prices, load_prices
-    from strategy import add_indicators, trading_signals, statistical_summary, explain_statistics
+    from strategy import statistical_summary, explain_statistics
+    from app import make_charts
     prices = load_prices() if DATA_PATH.exists() else download_prices()
-    indicators = add_indicators(prices)
     config = BacktestConfig()
-    daily, trades, metrics = run_backtest(prices, trading_signals(indicators["zscore"]), config)
+    segments = evaluate_split(prices, config)
     stats = statistical_summary(prices)
     output = Path(__file__).parent / "outputs"
     output.mkdir(exist_ok=True)
-    daily.to_csv(output / "backtest.csv")
-    trades.to_csv(output / "trades.csv", index=False)
-    report = dict(label="Exploratory continuous-futures research simulation", statistics=stats,
-                  assumptions=asdict(config), metrics=metrics, explanation=explain_statistics(stats))
+    report = dict(label="Exploratory chronological 70/30 simulation; not live performance",
+                  statistics=stats, assumptions=asdict(config),
+                  data_sha256=hashlib.sha256(DATA_PATH.read_bytes()).hexdigest(),
+                  validation="Fixed-parameter retrospective 70/30 holdout; full history was inspected previously",
+                  strategy=dict(window=20, entry=2.0, exit_band=0.25, stop_z=3.0, max_holding=15),
+                  explanation=explain_statistics(stats), segments={})
+    for name, segment in segments.items():
+        prefix = name.lower()
+        segment["daily"].to_csv(output / f"{prefix}_backtest.csv")
+        segment["trades"].to_csv(output / f"{prefix}_trades.csv", index=False)
+        segment["monthly"].to_csv(output / f"{prefix}_monthly.csv")
+        segment["sensitivity"].to_csv(output / f"{prefix}_sensitivity.csv", index=False)
+        dates = segment["daily"].index
+        report["segments"][name] = dict(start=str(dates[0].date()), end=str(dates[-1].date()),
+            observations=len(dates), metrics=segment["metrics"], summary=segment["summary"],
+            sensitivity=segment["sensitivity"].astype(object).where(
+                segment["sensitivity"].notna(), None).to_dict(orient="records"))
+        for chart_name, figure in make_charts(segment["indicators"], segment["daily"]).items():
+            figure.write_html(output / f"{prefix}_{chart_name}.html", include_plotlyjs=True)
     (output / "results.json").write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
-    from app import make_charts
-    for name, figure in make_charts(indicators, daily).items():
-        figure.write_html(output / f"{name}.html", include_plotlyjs=True)
     print(json.dumps(report, indent=2, allow_nan=False))
-    print(f"Saved results, trade ledger, daily P&L and four interactive charts to {output}")
+    print(f"Saved separate training/testing results and charts to {output}")
