@@ -161,8 +161,8 @@ def slippage_sensitivity(prices, signals, config=BacktestConfig()) -> pd.DataFra
     return pd.DataFrame(rows)
 
 
-def evaluate_split(prices, config=BacktestConfig(), *, window=20, entry=2.0,
-                   exit_band=0.25, stop_z=3.0, max_holding=15, include_sensitivity=True) -> dict:
+def evaluate_split(prices, config=BacktestConfig(), *, window=20, entry=1.5,
+                   exit_band=0.25, stop_z=3.0, max_holding=15) -> dict:
     """Chronological 70/30 holdout; no parameter fitting or test-driven selection.
 
     Trailing indicators may use earlier training prices for test warm-up.
@@ -183,63 +183,8 @@ def evaluate_split(prices, config=BacktestConfig(), *, window=20, entry=2.0,
         daily, trades, metrics = run_backtest(segment, signals, config)
         segments[name] = dict(indicators=segment, daily=daily, trades=trades, metrics=metrics,
                               monthly=monthly_pnl(daily), summary=completed_trade_summary(trades),
-                              sensitivity=slippage_sensitivity(segment, signals, config)
-                                  if include_sensitivity else pd.DataFrame())
+                              sensitivity=slippage_sensitivity(segment, signals, config))
     return segments
-
-
-ENTRY_THRESHOLDS = (1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5)
-
-
-def select_entry_threshold(training_prices, config=BacktestConfig(), *, window=20,
-                           exit_band=0.25, stop_z=3.0, max_holding=15):
-    """Accept ONLY training prices. Equal-weight Sharpe/drawdown ranks, >=10 trades.
-
-    Rule fixed in advance: average descending Sharpe rank and ascending dollar
-    drawdown rank among eligible candidates (lower score wins). Ties prefer higher
-    Sharpe, then lower threshold. No qualifying candidate means no selected trade rule.
-    """
-    from strategy import add_indicators, trading_signals
-    if not exit_band < min(ENTRY_THRESHOLDS) or not stop_z > max(ENTRY_THRESHOLDS):
-        raise ValueError("To compare all seven entries, require exit band < 1 and stop Z-score > 2.5.")
-    indicators = add_indicators(training_prices, window)
-    rows = []
-    for entry in ENTRY_THRESHOLDS:
-        signals = trading_signals(indicators.zscore, entry, exit_band, stop_z, max_holding)
-        _, _, metrics = run_backtest(indicators, signals, config)
-        rows.append(dict(entry_threshold=entry, **metrics))
-    table = pd.DataFrame(rows)
-    table["eligible"] = (table.number_of_trades >= 10) & np.isfinite(table.sharpe_ratio.astype(float))
-    table["selection_score"] = np.nan
-    eligible = table.loc[table.eligible]
-    table.loc[eligible.index, "selection_score"] = (
-        eligible.sharpe_ratio.rank(ascending=False, method="min")
-        + eligible.max_drawdown_usd.rank(ascending=True, method="min")) / 2
-    if eligible.empty:
-        return table, None
-    best = table.loc[table.eligible].sort_values(
-        ["selection_score", "sharpe_ratio", "entry_threshold"], ascending=[True, False, True]).iloc[0]
-    return table, float(best.entry_threshold)
-
-
-def evaluate_thresholds(prices, config=BacktestConfig(), *, window=20,
-                        exit_band=0.25, stop_z=3.0, max_holding=15):
-    """Choose on the first 70%; evaluate only the winner on the remaining 30%.
-
-    The test is run once per invocation at the supplied costs, without a test
-    threshold grid or slippage grid. UI reruns are deterministic recomputations,
-    not independent experiments; historical prior inspection remains a limitation.
-    """
-    split = int(len(prices) * 0.7)
-    if split < window or len(prices) - split < 2:
-        raise ValueError("Not enough observations for training warm-up and testing.")
-    if not prices.index.is_monotonic_increasing or prices.index.has_duplicates:
-        raise ValueError("Use unique, chronologically ordered observations.")
-    settings = dict(window=window, exit_band=exit_band, stop_z=stop_z, max_holding=max_holding)
-    table, entry = select_entry_threshold(prices.iloc[:split], config, **settings)
-    segments = (evaluate_split(prices, config, entry=entry, include_sensitivity=False, **settings)
-                if entry is not None else {})
-    return table, entry, segments
 
 
 if __name__ == "__main__":
@@ -248,12 +193,7 @@ if __name__ == "__main__":
     from app import make_charts
     prices = load_prices() if DATA_PATH.exists() else download_prices()
     config = BacktestConfig()
-    thresholds, selected_entry, segments = evaluate_thresholds(prices, config)
-    output = Path(__file__).parent / "outputs"
-    output.mkdir(exist_ok=True)
-    thresholds.to_csv(output / "threshold_comparison.csv", index=False)
-    if selected_entry is None:
-        raise SystemExit("No threshold meets the training eligibility rule; no test evaluation performed.")
+    segments = evaluate_split(prices, config)
     stats = statistical_summary(prices)
     output = Path(__file__).parent / "outputs"
     output.mkdir(exist_ok=True)
@@ -261,23 +201,20 @@ if __name__ == "__main__":
                   statistics=stats, assumptions=asdict(config),
                   data_sha256=hashlib.sha256(DATA_PATH.read_bytes()).hexdigest(),
                   validation="Fixed-parameter retrospective 70/30 holdout; full history was inspected previously",
-                  strategy=dict(window=20, entry=selected_entry, exit_band=0.25, stop_z=3.0, max_holding=15),
-                  selection_rule="At least 10 training trades; equal-weight Sharpe and drawdown ranks; ties by Sharpe then lower entry",
-                  threshold_comparison=thresholds.astype(object).where(thresholds.notna(), None).to_dict("records"),
+                  strategy=dict(window=20, entry=1.5, exit_band=0.25, stop_z=3.0, max_holding=15),
                   explanation=explain_statistics(stats), segments={})
     for name, segment in segments.items():
         prefix = name.lower()
         segment["daily"].to_csv(output / f"{prefix}_backtest.csv")
         segment["trades"].to_csv(output / f"{prefix}_trades.csv", index=False)
         segment["monthly"].to_csv(output / f"{prefix}_monthly.csv")
-        if not segment["sensitivity"].empty:
-            segment["sensitivity"].to_csv(output / f"{prefix}_sensitivity.csv", index=False)
+        segment["sensitivity"].to_csv(output / f"{prefix}_sensitivity.csv", index=False)
         dates = segment["daily"].index
         report["segments"][name] = dict(start=str(dates[0].date()), end=str(dates[-1].date()),
             observations=len(dates), metrics=segment["metrics"], summary=segment["summary"],
             sensitivity=segment["sensitivity"].astype(object).where(
                 segment["sensitivity"].notna(), None).to_dict(orient="records"))
-        for chart_name, figure in make_charts(segment["indicators"], segment["daily"], entry=selected_entry).items():
+        for chart_name, figure in make_charts(segment["indicators"], segment["daily"]).items():
             figure.write_html(output / f"{prefix}_{chart_name}.html", include_plotlyjs=True)
     (output / "results.json").write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
     print(json.dumps(report, indent=2, allow_nan=False))

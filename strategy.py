@@ -19,7 +19,7 @@ def add_indicators(prices: pd.DataFrame, window: int = 20) -> pd.DataFrame:
     return frame
 
 
-def trading_signals(zscore: pd.Series, entry: float = 2.0,
+def trading_signals(zscore: pd.Series, entry: float = 1.5,
                     exit_band: float = 0.25, stop_z: float = 3.0,
                     max_holding: int = 15) -> pd.Series:
     """Close-time decisions, executed at the NEXT close by run_backtest.

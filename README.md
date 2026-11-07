@@ -4,6 +4,16 @@ A small Python research project exploring whether the daily **Brent − WTI** cr
 
 **Exploratory analysis, not verified trading performance.** Yahoo continuous futures symbols are price proxies, not a history of executable, expiry-matched contracts. No profitability is assumed or promised.
 
+## Current version
+
+Restored the simple fixed-entry workflow from `83d1876`, with **default entry Z-score ±1.5** and detailed trade prices. Automatic threshold comparison/selection is removed. You can change entry manually in the sidebar; the same value applies to training and testing. Stop remains ±3, the maximum holding period remains 15 matched trading intervals, and mean-reversion exit remains ±0.25. The 70/30 split, six analytical charts, monthly P&L and both slippage comparison tables are retained.
+
+The ledger includes both WTI and Brent entry/exit prices, entry/exit spreads, signal dates and available signal Z-scores, leg directions and contract quantities, leg-level gross P&L, separate commissions/slippage, net P&L and holding days. Prices are the next-close Yahoo proxies, not verified fills; slippage is deducted separately in dollars, not also embedded in the displayed prices. Final liquidations have no exit signal date or Z-score.
+
+Dated result files from prior versions are historical snapshots. They do not override the current default or run automatic selection. The ±1.5 default was requested after earlier inspection of this history, so the holdout is not genuinely unseen data. Continuous-contract rollover limitations still apply.
+
+Verified fixed-entry run on the saved 2021-11-08–2026-11-05 dataset: training net P&L **$40,910.01** across **55 trades**, testing net P&L **$46,640.00** across **21 trades**. These are illustrative simulations, not executable profits. See [full results and slippage scenarios](results/2026-11-07-fixed-entry-1.5.json), [training trade prices](results/2026-11-07-fixed-entry-1.5-training-trades.csv), and [test trade prices](results/2026-11-07-fixed-entry-1.5-testing-trades.csv). All 26 current tests pass, including default consistency and detailed price/P&L checks.
+
 ## Quick start
 
 Use Python 3.12 (tested). From the repository root:
@@ -54,11 +64,11 @@ Generated outputs in `outputs/`:
 | `training_backtest.csv`, `testing_backtest.csv` | Separate daily positions, P&L, costs and drawdowns |
 | `training_trades.csv`, `testing_trades.csv` | Completed trades, costs and holding days |
 | `training_monthly.csv`, `testing_monthly.csv` | Monthly mark-to-market P&L |
-| `threshold_comparison.csv` | Training metrics, eligibility and selection score for seven entry thresholds |
+| `training_sensitivity.csv`, `testing_sensitivity.csv` | Results at 1, 2, 3 and 5 slippage ticks |
 | `results.json` | Parameters, statistics, data fingerprint and separate segment metrics |
 | `training_*.html`, `testing_*.html` | Six charts per segment: prices, spread, Z-score, P&L, correlation and monthly P&L |
 
-The dashboard defaults to the test segment, with a selector for training. It shows both segments' performance separately, plus a training threshold table and Sharpe chart, executed trade markers, a completed-trade summary and CSV downloads. Generated HTML charts embed Plotly for offline viewing. Old unprefixed artifacts from the earlier version may still exist locally; current runs write the prefixed training/testing artifacts above.
+The dashboard defaults to the test segment, with a selector for training. It shows both segments' performance and cost sensitivity separately, executed trade markers, a completed-trade summary and CSV downloads. Generated HTML charts embed Plotly for offline viewing. Old unprefixed artifacts from the earlier version may still exist locally; current runs write the prefixed training/testing artifacts above.
 
 ## Data and cleaning
 
@@ -84,15 +94,15 @@ Full-sample statistics are descriptive only and never filter trades. The dashboa
 
 | State / condition | Desired action |
 | --- | --- |
-| Flat and +E < Z-score < +3 | Short spread: sell Brent, buy WTI |
-| Flat and −3 < Z-score < −E | Long spread: buy Brent, sell WTI |
+| Flat and +1.5 < Z-score < +3 | Short spread: sell Brent, buy WTI |
+| Flat and −3 < Z-score < −1.5 | Long spread: buy Brent, sell WTI |
 | Long and Z-score ≥ −0.25 | Close; also catches a jump across zero |
 | Short and Z-score ≤ +0.25 | Close; also catches a jump across zero |
 | Long and Z-score ≤ −3, or short and Z-score ≥ +3 | Stop-loss exit at the next close |
 | Position reaches the 15-trading-day holding limit | Time exit |
 | Otherwise | Hold the existing position or remain flat |
 
-`E` is the entry threshold selected on training (±1.5 in the recorded run below). Thresholds are strict for entry. New entries are blocked at or beyond the stop threshold. Exit takes priority; no immediate reversal on an exit day. Missing indicators hold an existing position unless its holding limit is reached; the warm-up starts flat. Stop threshold (default ±3) and holding limit (default 15) are configurable in the sidebar. Require `exit_band < entry < stop_z` and a positive integer holding limit.
+Thresholds are strict for entry. New entries are blocked at or beyond the stop threshold. Exit takes priority; no immediate reversal on an exit day. Missing indicators hold an existing position unless its holding limit is reached; the warm-up starts flat. Stop threshold (default ±3) and holding limit (default 15) are configurable in the sidebar. Require `exit_band < entry < stop_z` and a positive integer holding limit.
 
 **Timing matters:** a signal calculated at Monday's close executes at Tuesday's close (or the next matched observation). The first earned price change is Tuesday close to Wednesday close. Tuesday's close-to-close move is not credited to a position that only opens Tuesday evening.
 
@@ -100,37 +110,14 @@ In code, `signal` is the desired state, `position = signal.shift(1)` is the stat
 
 A stop uses a closing Z-score and executes at the **next** close, like every other signal. It is not an intraday stop order, a guaranteed fill, or a dollar-loss cap; Z-scores themselves change with rolling volatility. If an entry is signaled at observation `i`, it executes at `i+1`; a time exit is signaled at `i+15` and executes at `i+16`, giving 15 held close-to-close intervals. Days mean matched trading observations, not calendar days. Gaps caused by missing data can increase elapsed calendar time. After an exit, a fresh eligible signal may enter again on a later observation.
 
-## Training-only entry selection
-
-The dashboard and `python backtest.py` now compare **1.0, 1.25, 1.5, 1.75, 2.0, 2.25 and 2.5** using only the first 70% of observations. The entry input is replaced by the selected threshold. Stop-loss stays at ±3 by default, holding limit at 15 matched trading intervals, and the mean-reversion exit at ±0.25. Other sidebar settings remain configurable and apply equally to all candidates. To compare all seven entries, require exit band < 1 and stop threshold > 2.5.
-
-The rule is specified before inspecting these candidate results:
-
-1. Require **at least 10 completed training trades** and a finite Sharpe. Ten trades is a simple minimum screen, not proof of statistical reliability.
-2. Among eligible candidates, rank Sharpe descending and maximum dollar drawdown ascending. Tied values receive the smallest shared rank (`method="min"`). The selection score is the average of those two ranks; lower is better.
-3. Break score ties by higher Sharpe, then lower entry threshold. Net P&L and profit factor are shown for context, not optimized separately.
-4. If none qualify, report no selection and skip the test backtest. Do not silently reduce the trade requirement or fall back to a profitable-looking candidate.
-
-Rank weights and minimum count are deliberately simple and arbitrary research choices. The rule may select a negative-return candidate if all eligible candidates are poor; selection is not a profitability guarantee. Comparing multiple candidates can overfit training even without test leakage.
-
-The selector accepts **only training prices**. After selection, the winning entry is frozen and tested once per analysis invocation at the specified costs. No test entry grid or test slippage sweep is calculated. The winner's training backtest is rerun only to build its detailed ledger. Streamlit reruns recompute the same deterministic analysis; they are not new independent evaluations. Repeatedly changing settings after viewing test results would compromise validation.
-
-**Previously inspected holdout:** this dataset's last 30% was already viewed in earlier project runs. Code now excludes those prices from selection, but we cannot truthfully call this historical period untouched. A genuinely untouched experiment would require freezing these choices before obtaining new future observations.
-
-## Detailed trade ledger
-
-Each completed trade now records direction, contract quantity per leg, buy/sell side for Brent and WTI, executed entry/exit dates, decision dates and available decision Z-scores, both legs' entry/exit prices, entry/exit spreads, trading intervals held, leg-level gross dollar P&L, total gross/net P&L, separate commissions and slippage, and a final-liquidation flag. These fields appear in the dashboard and exported CSVs.
-
-Prices are **execution-date Yahoo proxy closes in USD/barrel**, not demonstrated executable fills. Slippage is charged in dollars separately, so it is not also applied to the displayed prices. Entry and normal exit decision dates precede execution by one matched observation. Final forced liquidation has no decision date/Z-score. Missing Z-scores are blank, not fabricated. Leg-level P&L sums to gross P&L, and gross minus both costs reconciles to net. Contract multipliers and lagged execution are unchanged.
-
 ## Chronological validation and performance analysis
 
-- Split once at `floor(0.70 × number_of_observations)`: the first 70% is training and the remainder testing. No shuffling or test-driven selection is performed. Only the seven specified entry thresholds are compared on training; the rule below selects one before testing.
-- Use the training-selected entry and the same rolling window, exit threshold, stop threshold, holding limit, quantities and cost assumptions in both segments. Trailing test indicators may use earlier training prices and subsequently observed test prices; they never use future prices.
+- Split once at `floor(0.70 × number_of_observations)`: the first 70% is training and the remainder testing. No shuffle, fitting, parameter optimization, or test-driven selection is performed.
+- Use the same rolling window, entry/exit thresholds, stop threshold, holding limit, quantities and cost assumptions in both segments. Trailing test indicators may use earlier training prices and subsequently observed test prices; they never use future prices.
 - Training ends with a charged liquidation; testing starts flat, with no carried position or pending signal. The first test signal executes on the second test close. Each segment starts its P&L and drawdown accounting at zero, and final liquidation costs are included.
 - Both segments have independent metrics and trade ledgers. Changing sidebar settings applies the same settings to both; repeatedly choosing settings after viewing test performance would invalidate a clean holdout claim.
 - **This is retrospective holdout validation:** the earlier project already inspected the full history. The chronological partition prevents computational leakage but cannot make previously viewed data genuinely unseen. There is no claim of a pristine out-of-sample experiment or live profitability.
-- The earlier fixed-threshold workflow supports cost sensitivity at 1, 2, 3 and 5 slippage ticks per leg per execution. The current selection workflow does not sweep test costs or test entry thresholds; it evaluates only the winner at the configured costs. `slippage_sensitivity` remains available for separate training-only analysis. At one pair and $2.50 commission, total round-trip costs are $50, $90, $130 and $210 respectively.
+- Cost sensitivity recomputes each segment at 1, 2, 3 and 5 slippage ticks per leg per execution, keeping signals and commission fixed. At one pair and $2.50 commission, total round-trip costs are $50, $90, $130 and $210 respectively.
 - The 60-observation rolling Pearson correlation is between **price levels**, not returns. It is descriptive, uses only trailing data, and is not a signal filter. Initial unavailable values remain missing.
 - Monthly bars sum daily net mark-to-market P&L and costs in their calendar month, including partial months at segment boundaries. This differs from allocating an entire trade to its exit month. Monthly totals reconcile to segment net P&L.
 - Completed-trade summaries show wins/losses/break-even trades, average/best/worst net P&L, and average/maximum held trading intervals. Empty ledgers display undefined averages as N/A rather than invented values.
@@ -182,29 +169,9 @@ No margin calls, collateral interest, financing, liquidity, actual roll trades, 
 
 The automated tests cover spread and sample-standard-deviation Z-scores, future-data independence, signal state transitions, next-close execution, both-leg contract P&L, costs, final liquidation, loss/win metrics, missing data, downloader behavior, and dashboard rendering. Tests use explicitly synthetic deterministic fixtures solely to verify software; those fixtures are never presented as market observations.
 
-### Current training-selected run — November 7, 2026
+### Archived risk-managed validation — November 7, 2026
 
-Uses the same cached Yahoo observations (2021-11-08 through 2026-11-05): 879 training observations ending 2025-05-08 and 377 test observations beginning 2025-05-09. No data were fabricated or refreshed for this comparison. All other settings use the defaults documented above.
-
-| Training entry | Net P&L | Sharpe | Profit factor | Max drawdown | Completed trades | Selection score |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | $38,420.02 | 1.1687 | 4.1135 | $6,610.00 | 77 | 4.5 |
-| 1.25 | $40,350.02 | 1.3082 | 5.4635 | $7,189.98 | 65 | 4.5 |
-| 1.5 | $40,910.01 | 1.3659 | 6.8443 | $5,529.99 | 55 | 2 |
-| 1.75 | $19,540.02 | 0.9089 | 3.4892 | $6,009.99 | 45 | 4.5 |
-| 2 | $9,250.02 | 0.5795 | 2.2252 | $6,009.99 | 36 | 5.5 |
-| 2.25 | $10,080.02 | 0.9115 | 5.0000 | $2,369.99 | 25 | 2.5 |
-| 2.5 | $8,520.02 | 0.8447 | 6.3924 | $2,369.99 | 16 | 3.5 |
-
-**Selected entry: ±1.5**, using training results only. At that threshold the single test evaluation reports $46,640.00 net P&L, Sharpe 1.7667, profit factor 14.9641, maximum drawdown $7,070.00 and 21 completed trades. This favorable simulation is not verified trading profitability: rollover effects, large proxy-price jumps, training selection bias and prior inspection of the holdout remain material limitations.
-
-Evidence: [full results and selection rule](results/2026-11-07-threshold-selection.json), [training comparison CSV](results/2026-11-07-threshold-comparison.csv), [detailed selected training trades](results/2026-11-07-selected-training-trades.csv), and [detailed selected test trades](results/2026-11-07-selected-testing-trades.csv). The dashboard adds a training Sharpe-versus-entry chart with the chosen threshold marked. No candidate-level test performance table is generated.
-
-**Validation:** all 29 tests pass. Tests perturb only test prices and verify unchanged training scores and selection; instrument backtest calls to require exactly one test evaluation; cover insufficient-trade behavior and ranking; and reconcile detailed leg prices, gross P&L and fees for both directions. The actual-data dashboard also renders the selected threshold and seven charts successfully. A headless system-Chromium check verified the selected-threshold message and detailed-trade tab. Existing pandas/NumPy month-end deprecation warnings remain non-fatal.
-
-### Archived fixed-entry risk-managed validation — November 7, 2026
-
-This snapshot used entry ±2 before training-only threshold selection was added. It is not the current selected-threshold result.
+This archived snapshot used entry ±2. The current default is ±1.5; see the current-version summary above.
 
 This run reuses the **same 1,256-row Yahoo dataset downloaded November 6, 2026**, ending November 5, 2026; it does not claim to include newer observations. Its SHA-256 matches the archived source snapshot. No synthetic prices, parameter search or test-based tuning were used. Defaults: 20-day Z-score, entry ±2, mean-reversion exit ±0.25, stop ±3, maximum 15 held trading intervals, one contract per leg, $2.50 commission and one tick slippage per leg per execution.
 
