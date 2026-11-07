@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from backtest import BacktestConfig, evaluate_split, monthly_pnl
+from backtest import BacktestConfig, evaluate_thresholds, monthly_pnl
 from data import DATA_PATH, download_prices, load_prices
 from strategy import statistical_summary, explain_statistics
 
@@ -79,7 +79,6 @@ def main():
     with st.sidebar:
         st.header("Research settings")
         window = st.number_input("Rolling window (observations)", 5, 120, 20)
-        entry = st.number_input("Entry Z-score", 0.5, 5.0, 2.0, 0.25)
         exit_band = st.number_input("Exit band around zero", 0.0, 1.0, 0.25, 0.05)
         stop_z = st.number_input("Stop-loss Z-score (absolute)", 0.75, 10.0, 3.0, 0.25)
         max_holding = st.number_input("Maximum holding days", 1, 120, 15)
@@ -88,8 +87,8 @@ def main():
         slippage = st.number_input("Slippage ticks / leg / execution", 0.0, 20.0, 1.0, 0.5)
         refresh = st.button("Download / refresh Yahoo prices", type="primary")
         st.caption("One tick = $0.01/barrel = $10 per contract on each leg.")
-    if not exit_band < entry < stop_z:
-        st.error("Require exit band < entry threshold < stop-loss Z-score.")
+    if not exit_band < 1.0 or not stop_z > 2.5:
+        st.error("For the seven entry candidates, use exit band < 1 and stop Z-score > 2.5.")
         st.stop()
     try:
         if refresh or not DATA_PATH.exists():
@@ -97,8 +96,8 @@ def main():
                 prices = download_prices()
         else:
             prices = load_prices()
-        segments = evaluate_split(prices, BacktestConfig(int(quantity), commission, slippage),
-                                  window=int(window), entry=entry, exit_band=exit_band,
+        thresholds, entry, segments = evaluate_thresholds(prices, BacktestConfig(int(quantity), commission, slippage),
+                                  window=int(window), exit_band=exit_band,
                                   stop_z=stop_z, max_holding=int(max_holding))
         stats = statistical_summary(prices)
     except Exception as exc:
@@ -110,8 +109,25 @@ def main():
                "• raw daily Close • missing pairs dropped • cached CSV until refreshed")
     st.info("Long spread = buy Brent and sell WTI. Short spread = sell Brent and buy WTI. "
             "Signals execute at the next available daily close. P&L starts after execution.")
+    st.subheader("Entry-threshold comparison — training only")
+    st.caption("Fixed rule: at least 10 completed training trades and a finite Sharpe. "
+               "Minimize the average of Sharpe rank (higher is better) and dollar drawdown rank "
+               "(lower is better). Ties prefer higher Sharpe, then lower entry. "
+               "Ten trades is a simple screening rule, not statistical confidence.")
+    st.dataframe(thresholds, hide_index=True, width="stretch")
+    threshold_chart = go.Figure(go.Scatter(x=thresholds.entry_threshold,
+        y=thresholds.sharpe_ratio, mode="lines+markers", name="Training Sharpe"))
+    threshold_chart.update_layout(title="Training Sharpe versus entry threshold",
+                                  xaxis_title="Entry |Z|", yaxis_title="Sharpe", template="plotly_white")
+    if entry is not None:
+        threshold_chart.add_vline(x=entry, line_dash="dash", line_color="#10b981")
+    st.plotly_chart(threshold_chart, width="stretch")
+    if entry is None:
+        st.warning("No candidate meets the training trade-count rule. No test results are evaluated.")
+        st.stop()
+    st.success(f"Training-selected entry: ±{entry:g}; frozen for the test evaluation.")
     st.subheader("Chronological validation: 70% training / 30% testing")
-    st.caption("Parameters are fixed across both segments; no automated tuning. Training ends flat, "
+    st.caption("Only entry is selected on training; all other settings stay fixed. Training ends flat, "
                "testing starts flat. Earlier training prices warm up trailing test indicators. "
                "The full history was inspected previously, so this is retrospective holdout analysis, "
                "not a pristine unseen experiment. Repeated test-driven tuning compromises validation.")
@@ -164,7 +180,7 @@ def main():
         st.write(f"Completed-trade summary — {selected}")
         st.dataframe(pd.DataFrame([result["summary"]]), hide_index=True)
         st.caption("Holding days are matched trading intervals from executed entry to exit. "
-                   "Monthly P&L uses daily mark-to-market, not trade exit-month attribution.")
+                   "Prices are execution-day proxy closes, not verified fills. Slippage is a separate cash cost, not added to displayed prices. Signal dates precede executions; forced exits have no signal. Monthly P&L is marked to market.")
         st.dataframe(trades, hide_index=True, width="stretch")
         for label, frame, filename, index in [
             ("Cleaned prices CSV", prices, "prices.csv", True),
@@ -174,11 +190,10 @@ def main():
         ]:
             st.download_button(label, frame.to_csv(index=index), filename, "text/csv")
     with costs_tab:
-        st.caption("Same fixed signals and commissions in every scenario; only slippage changes. "
-                   "Ticks are charged per contract, per leg, per execution. Includes exit costs.")
-        for name, segment in segments.items():
-            st.write(name)
-            st.dataframe(segment["sensitivity"], hide_index=True, width="stretch")
+        st.write("Commissions and slippage remain included in every candidate and the selected test run.")
+        st.caption("Test slippage sweeps are not run in this selection workflow: only the chosen "
+                   "entry at the configured costs is evaluated. The existing slippage_sensitivity "
+                   "function remains available for separate training-only analysis.")
     with st.expander("Assumptions and limitations"):
         st.write("Equal contract quantities; 1,000 barrels per contract on both legs. "
                  "Default costs: $2.50 commission plus one $10 tick of slippage per leg "

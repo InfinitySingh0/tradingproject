@@ -156,7 +156,7 @@ def test_dashboard_renders_analysis_and_reacts_to_settings(monkeypatch, tmp_path
     assert not at.exception
     assert not at.error
     assert len(at.metric) == 10
-    assert len(at.get("plotly_chart")) == 6
+    assert len(at.get("plotly_chart")) == 7
     assert at.radio[0].value == "Testing"
     at.radio[0].set_value("Training").run(timeout=30)
     assert not at.exception and not at.error
