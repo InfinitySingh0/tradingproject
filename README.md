@@ -220,14 +220,12 @@ Data cleaning sorts and deduplicates dates, removes invalid/missing pairs withou
 
 Final liquidations have no exit decision date or decision Z-score. Missing values remain blank. The dashboard provides CSV downloads and recalculates its displays when settings change; CLI reports use the default parameters. Old training/testing or threshold files are not read by the current app.
 
-## Validation and résumé use
+## Testing
 
-The current implementation passed **16 automated tests**, plus actual-data Streamlit and Chromium checks. Tests cover spread/Z-score arithmetic, future-data independence, mean-reversion signals, lagged execution, multipliers, costs, final liquidation, data cleaning, downloader failures, detailed trade accounting and dashboard rendering. Synthetic fixtures are used only for software tests, never as historical results. This README update does not change strategy code.
+The project includes 16 automated tests covering data cleaning, trading signals, execution timing, futures P&L, transaction costs, and dashboard behavior.
 
-Accurate résumé bullets:
+Run them with:
 
-- Developed a Python research application for WTI–Brent futures spreads with Yahoo Finance ingestion, rolling Z-scores, ADF testing and Engle–Granger cointegration analysis.
-- Implemented a two-leg futures simulation with lagged execution, explicit contract multipliers, commissions, slippage and detailed trade-level accounting.
-- Built an interactive Streamlit/Plotly dashboard and automated tests, documenting continuous-futures rollover effects and in-sample validation limitations.
-
-Describe the project as exploratory research. If quoting any metric, state its sample, assumptions and limitations; do not present it as live performance.
+```bash
+python -m pytest -q
+```
