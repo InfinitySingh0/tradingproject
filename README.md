@@ -1,5 +1,11 @@
 # WTI–Brent Crude Oil Spread Trading Using Mean Reversion
 
+**Author:** Ankit Kumar
+
+M.Sc. Mathematics and Computing, IIT (ISM) Dhanbad
+
+[GitHub](https://github.com/InfinitySingh0)
+
 A beginner-friendly Python research project that studies the **Brent − WTI** crude oil price spread, generates mean-reversion signals, and simulates two-leg futures P&L after transaction costs. Explore the results in a Streamlit dashboard built with Plotly.
 
 **Exploratory research only.** Yahoo continuous futures are price proxies. Rollover effects can distort signals and simulated profits; these results are not verified executable or live-trading performance.
@@ -123,18 +129,25 @@ Direction is +1 for a long spread and −1 for a short spread. A favorable $1/ba
 
 Defaults are **$2.50 commission plus one $10 slippage tick per contract, per leg, per execution**. One pair costs $25 to open and $25 to close: **$50 per round trip**. Slippage is deducted as cash; it is not also applied to the displayed entry/exit prices.
 
-### A worked trade from the saved ledger
+### A profitable trade from the saved ledger
 
-The first trade in the [current saved ledger](results/2026-11-07-simple-entry-1.5-trades.csv) was a long spread. Its entry signal was December 22, 2021 (Z ≈ −1.5422), executed December 23. The exit signal was January 4, 2022 (Z ≈ 0.1190), executed January 5.
+This example comes from the [saved backtest ledger](results/2026-11-07-simple-entry-1.5-trades.csv). The entry signal appeared on **January 12, 2022**, with a Z-score of approximately **−2.4428**. The strategy opened a long spread on **January 13**. An exit signal appeared on **January 21** (Z ≈ 0.4849), and the position closed on **January 24**, the next available trading observation.
 
-| Leg | Entry action | Entry close | Exit close | Gross P&L |
+| Leg | Entry action | Entry price | Exit price | Gross P&L |
 | --- | --- | ---: | ---: | ---: |
-| Brent | Buy one contract | $76.85 | $80.80 | +$3,950.00 |
-| WTI | Sell one contract | $73.79 | $77.85 | −$4,060.00 |
+| Brent | Buy one contract | $84.47 | $86.27 | +$1,800.00 |
+| WTI | Sell one contract | $82.12 | $83.31 | −$1,189.99 |
 
-Total gross P&L was approximately **−$109.99**. Subtract $10 commission and $40 slippage for **−$159.99 net P&L**. Values in the table are rounded; calculations use full-precision downloaded prices.
+Using the original, unrounded prices:
 
-This is a useful example of why a Z-score exit near zero does **not** guarantee profit: rolling mean and volatility change, execution is delayed, and costs must be paid.
+- **Gross P&L:** approximately **$610.00**
+- **Commission:** $10
+- **Slippage:** $40
+- **Net P&L:** approximately **$560.00**
+
+Both prices rose, but Brent rose more than WTI. The spread widened from approximately **$2.35 to $2.96 per barrel**, benefiting the long-spread position. With a 1,000-barrel multiplier, that $0.61 change produced roughly $610 before costs.
+
+Displayed figures are rounded independently, so their sum may differ slightly from the full-precision total. This example was chosen to illustrate a profitable simulated trade; it is not representative of every trade or evidence of live profitability. Yahoo continuous-futures prices may contain rollover effects.
 
 ## Statistics and performance metrics
 
