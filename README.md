@@ -1,11 +1,5 @@
 # WTI–Brent Crude Oil Spread Trading Using Mean Reversion
 
-**Author:** Ankit Kumar
-
-M.Sc. Mathematics and Computing, IIT (ISM) Dhanbad
-
-[GitHub](https://github.com/InfinitySingh0)
-
 A beginner-friendly Python research project that studies the **Brent − WTI** crude oil price spread, generates mean-reversion signals, and simulates two-leg futures P&L after transaction costs. Explore the results in a Streamlit dashboard built with Plotly.
 
 **Exploratory research only.** Yahoo continuous futures are price proxies. Rollover effects can distort signals and simulated profits; these results are not verified executable or live-trading performance.
@@ -229,3 +223,9 @@ Run them with:
 ```bash
 python -m pytest -q
 ```
+
+**Author:** Ankit Kumar
+
+M.Sc. Mathematics and Computing, IIT (ISM) Dhanbad
+
+[GitHub](https://github.com/InfinitySingh0)
