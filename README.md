@@ -1,23 +1,23 @@
 # WTI–Brent Crude Oil Spread Trading Using Mean Reversion
 
-A beginner-friendly Python research project that studies the **Brent − WTI** crude oil price spread, generates mean-reversion signals, and simulates two-leg futures P&L after transaction costs. Explore the results in a Streamlit dashboard built with Plotly.
+This project looks at the price difference between Brent and WTI crude oil futures. It uses a rolling Z-score to find potential mean-reversion trades, then backtests them with commissions and slippage. The Streamlit dashboard shows the prices, signals, individual trades and P&L.
 
-**Exploratory research only.** Yahoo continuous futures are price proxies. Rollover effects can distort signals and simulated profits; these results are not verified executable or live-trading performance.
+The backtest uses Yahoo continuous futures data. Contract rolls can affect both signals and P&L, so the results should be read as a research simulation, not a record of actual trades.
 
-## What the project does
+## Overview
 
-- Downloads approximately five years of daily WTI (`CL=F`) and Brent (`BZ=F`) prices with free `yfinance` access.
+- Downloads about five years of daily WTI (`CL=F`) and Brent (`BZ=F`) prices using `yfinance`.
 - Aligns and cleans prices, calculates correlation, and runs ADF and Engle–Granger tests.
-- Trades a 20-observation rolling spread Z-score with **default entry ±1.5** and mean-reversion exit near zero (±0.25).
+- Generates entries at **Z-scores beyond ±1.5** and exits near zero (±0.25), using a 20-observation rolling window.
 - Uses next-close execution, explicit futures contract multipliers, commissions and slippage.
 - Displays four charts: price history, spread with executed trades, Z-score, and cumulative P&L.
 - Exports cleaned prices, daily P&L and detailed trades with both legs' entry and exit prices.
 
-The current version uses the entire sample. It has **no train/test split, stop-loss, maximum holding period or automatic threshold selection**. A position stays open until the mean-reversion exit or final-sample liquidation. Holding duration in the ledger is descriptive, not a limit. There are no monthly P&L, rolling-correlation or slippage-comparison features in the current app.
+The strategy runs on the full dataset, with no train/test split or automatic parameter selection. There is no stop-loss or holding limit: trades stay open until the exit condition is met, or until the dataset ends.
 
 ## Run on Windows (PowerShell)
 
-Install Git and **Python 3.12** (the tested Python version).
+Install Git and **Python 3.12**, which was used to test this project.
 
 ### First installation
 
@@ -31,7 +31,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-Open **http://localhost:8501**. The app downloads prices automatically if its local CSV is missing. These commands use the virtual environment directly, so PowerShell script activation is unnecessary.
+Open **http://localhost:8501** in your browser. The app downloads prices if there is no saved CSV. You do not need to activate the virtual environment when using these commands.
 
 ### Update an existing installation
 
@@ -44,7 +44,7 @@ git pull origin main
 .\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-Replace the folder path if you cloned elsewhere. If `.venv` does not exist, run `py -3.12 -m venv .venv` before installing dependencies. If Git reports conflicting local changes, preserve and resolve them before pulling; do not delete the folder or discard your work blindly.
+Change the folder path to wherever you cloned the repository. If `.venv` is missing, create it with `py -3.12 -m venv .venv`. Resolve any local Git conflicts before updating.
 
 To refresh prices and generate CSV/HTML reports outside the dashboard:
 
@@ -74,9 +74,9 @@ streamlit run app.py
 
 If the environment already has dependencies installed, activate `.venv` and run `streamlit run app.py`. Run tests with `python -m pytest -q`.
 
-No API key, paid dataset or brokerage account is needed. Yahoo can rate-limit requests or change its endpoints. A failed download produces an error rather than invented prices. Retry later or check network access; keep TLS verification enabled. Use the dashboard's refresh button to update a cached CSV.
+No API key or paid data subscription is needed. If a Yahoo download fails, check your connection or retry later. Use the refresh button in the dashboard to update saved prices.
 
-## Strategy in plain language
+## Strategy
 
 The spread is `Brent price − WTI price`, in dollars per barrel. A Z-score describes how far today's spread is from its recent average:
 
@@ -84,7 +84,7 @@ The spread is `Brent price − WTI price`, in dollars per barrel. A Z-score desc
 Z-score = (spread − trailing 20-observation mean) / trailing sample standard deviation
 ```
 
-Only data available through that close enter the rolling calculation. The warm-up and zero-volatility windows have no valid Z-score.
+The calculation uses only prices available at that day’s close. Z-scores are left blank until there are enough observations, or when the rolling standard deviation is zero.
 
 | Condition | Decision |
 | --- | --- |
@@ -94,19 +94,19 @@ Only data available through that close enter the rolling calculation. The warm-u
 | Short and Z ≤ +0.25 | Close both legs |
 | Otherwise | Hold the position or remain flat |
 
-Entry comparisons are strict. Exit rules also catch a jump across zero. There is no immediate reversal on an exit day. Missing Z-scores hold an existing position. Entry, exit band, rolling window, quantities and costs can be changed in the sidebar.
+A trade opens only after the Z-score moves beyond the entry threshold. An exit also triggers if it jumps across zero. The strategy does not reverse direction on the same signal day, and a missing Z-score leaves an existing position open. Settings can be changed in the sidebar.
 
-**Why ±1.5?** It is the current chosen default, not a theoretically optimal threshold or a guarantee of profits. It was chosen after earlier exploration of this history. The current program does not optimize it or validate it on unseen data.
+The ±1.5 entry threshold was chosen after exploring this historical data. It is a default setting, not a value proven to work best. The current version does not test it on unseen data.
 
 ### Execution timing
 
-A signal from Monday's close executes at Tuesday's close (or the next matched observation). Its first earned move is Tuesday close to Wednesday close. It does not earn the price move before its entry.
+For example, a signal at Monday’s close opens a position at Tuesday’s close, assuming both dates are available. P&L starts with the move from Tuesday’s close to Wednesday’s close.
 
 In the code, `position = signal.shift(1)` describes holdings after today's close; `held_position = position.shift(1)` earns today's close-to-close move. Any remaining position closes at the final observation with exit costs.
 
 ## Futures P&L and costs
 
-Assume equal integer contract quantities, initially one per leg:
+By default, each trade uses one contract on each leg:
 
 | Contract reference | Code | Multiplier | Outright tick size | Dollar tick value |
 | --- | --- | ---: | ---: | ---: |
@@ -123,7 +123,7 @@ Direction is +1 for a long spread and −1 for a short spread. A favorable $1/ba
 
 Defaults are **$2.50 commission plus one $10 slippage tick per contract, per leg, per execution**. One pair costs $25 to open and $25 to close: **$50 per round trip**. Slippage is deducted as cash; it is not also applied to the displayed entry/exit prices.
 
-### A profitable trade from the saved ledger
+### Example trade
 
 This example comes from the [saved backtest ledger](results/2026-11-07-simple-entry-1.5-trades.csv). The entry signal appeared on **January 12, 2022**, with a Z-score of approximately **−2.4428**. The strategy opened a long spread on **January 13**. An exit signal appeared on **January 21** (Z ≈ 0.4849), and the position closed on **January 24**, the next available trading observation.
 
@@ -141,7 +141,7 @@ Using the original, unrounded prices:
 
 Both prices rose, but Brent rose more than WTI. The spread widened from approximately **$2.35 to $2.96 per barrel**, benefiting the long-spread position. With a 1,000-barrel multiplier, that $0.61 change produced roughly $610 before costs.
 
-Displayed figures are rounded independently, so their sum may differ slightly from the full-precision total. This example was chosen to illustrate a profitable simulated trade; it is not representative of every trade or evidence of live profitability. Yahoo continuous-futures prices may contain rollover effects.
+The displayed amounts are rounded; the backtest calculates P&L from the original prices. This is one winning trade from the simulation, not a typical outcome or a live trade.
 
 ## Statistics and performance metrics
 
@@ -155,7 +155,7 @@ Displayed figures are rounded independently, so their sum may differ slightly fr
 
 Full-sample statistical tests describe the data; they do not filter trading signals. The trade count includes final forced liquidation, if needed.
 
-## Recorded results and limitations
+## Results
 
 The saved November 7, 2026 run used **1,256 matched observations from November 8, 2021 to November 5, 2026**, downloaded on November 6. Settings: 20-observation window, entry ±1.5, exit ±0.25, one pair, and the costs above.
 
@@ -177,11 +177,13 @@ The saved November 7, 2026 run used **1,256 matched observations from November 8
 
 At the 5% level, both tests reject their respective null hypotheses in this sample. This does not prove persistent mean reversion or an executable trading edge.
 
-**The favorable P&L needs particular caution.** The source includes a $15.93/barrel absolute spread jump on April 1, 2026. Its cause is not established. Continuous-series rolls, adjustments and mismatched expiries can create apparent gains that a real portfolio could not earn. `auto_adjust=False` does not remove these issues. No observations were removed to improve results.
+### Limitations
 
-The analysis is entirely in-sample and parameters have been explored on this history. It provides no independent evidence of future performance. There is no margin, financing, liquidity or actual roll-transaction model, and no stop-loss or holding limit. The research conclusion is that the data support further investigation—not that a profitable live strategy has been demonstrated.
+The dataset includes an absolute spread jump of $15.93 per barrel on April 1, 2026. Its cause has not been established. Contract rolls, price adjustments and different expiries can create apparent profits that would not be available in an actual trade. Using `auto_adjust=False` does not resolve these issues. The observations were kept as downloaded after cleaning missing or invalid pairs.
 
-New downloads may change the sample and results because the five-year window moves and Yahoo can revise history. Other dated files in `results/` are archived experiments, not current application behavior.
+The same history was used to explore the settings and report performance. That limits what these results tell us about future trades. The backtest also leaves out margin requirements, financing, liquidity and actual roll transactions. It does not establish that the strategy would be profitable in live trading.
+
+Results may change when prices are refreshed: the five-year window moves, and Yahoo may revise its data. Other dated files in `results/` are records of earlier versions.
 
 ## Project files and outputs
 
@@ -212,7 +214,7 @@ Data cleaning sorts and deduplicates dates, removes invalid/missing pairs withou
 | `results.json` | Statistics, assumptions, parameters, metrics and dataset hash |
 | `prices.html`, `spread.html`, `zscore.html`, `pnl.html` | Interactive charts with Plotly embedded for offline viewing |
 
-Final liquidations have no exit decision date or decision Z-score. Missing values remain blank. The dashboard provides CSV downloads and recalculates its displays when settings change; CLI reports use the default parameters. Old training/testing or threshold files are not read by the current app.
+Trades closed at the end of the dataset have no exit signal date or Z-score. Those fields are left blank. Dashboard results use the settings in the sidebar; command-line reports use the defaults. Files from older training/testing versions are not used by the current app.
 
 ## Testing
 
